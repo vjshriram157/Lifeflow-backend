@@ -63,10 +63,10 @@
         Connection conn = DBConnectionUtil.getConnection();
         PreparedStatement ps = conn.prepareStatement(
             "SELECT b.id AS bank_id, b.bank_name, b.city, " +
-            "s.blood_group, s.units_available, s.safety_stock " +
+            "s.blood_group, s.units, 5 AS safety_stock " +
             "FROM blood_banks b " +
-            "JOIN blood_stock s ON s.bank_id = b.id " +
-            "WHERE b.status='APPROVED' AND s.units_available < s.safety_stock"
+            "JOIN blood_stock s ON s.blood_bank_id = b.id " +
+            "WHERE b.status='APPROVED' AND s.units < 5"
         );
 
         ResultSet rs = ps.executeQuery();
@@ -83,7 +83,7 @@
                                 </span>
                             </td>
                             <td>
-                                <strong><%= rs.getInt("units_available") %></strong>
+                                <strong><%= rs.getInt("units") %></strong>
                                 <span class="text-muted">
                                     / <%= rs.getInt("safety_stock") %>
                                 </span>
