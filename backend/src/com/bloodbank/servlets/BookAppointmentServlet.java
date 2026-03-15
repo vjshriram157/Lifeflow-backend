@@ -20,7 +20,6 @@ public class BookAppointmentServlet extends HttpServlet {
 
             String sql = "SELECT id, bank_name FROM blood_banks";
 
-
             PreparedStatement ps = con.prepareStatement(sql);
             ResultSet rs = ps.executeQuery();
 
@@ -30,7 +29,6 @@ public class BookAppointmentServlet extends HttpServlet {
                 banks.add(new String[]{
                         rs.getString("id"),
                         rs.getString("bank_name")
-
                 });
             }
 
@@ -63,6 +61,24 @@ public class BookAppointmentServlet extends HttpServlet {
 
         try (Connection con = DBConnectionUtil.getConnection()) {
 
+            // 🔴 CHECK STRIKE COUNT BEFORE BOOKING
+            PreparedStatement checkStrike = con.prepareStatement(
+                    "SELECT strikes FROM users WHERE id = ?"
+            );
+            checkStrike.setLong(1, donorId);
+
+            ResultSet rsStrike = checkStrike.executeQuery();
+
+            if (rsStrike.next()) {
+                int strikes = rsStrike.getInt("strikes");
+
+                if (strikes >= 3) {
+                    response.getWriter().println("You are suspended due to 3 missed appointments.");
+                    return;
+                }
+            }
+
+            // 🔹 Original booking logic (unchanged)
             PreparedStatement ps = con.prepareStatement(
                     "INSERT INTO appointments (donor_id, bank_id, appointment_time, status) " +
                     "VALUES (?, ?, ?, 'PENDING')"
@@ -70,10 +86,9 @@ public class BookAppointmentServlet extends HttpServlet {
 
             appointmentTime = appointmentTime.replace("T", " ") + ":00";
 
-ps.setLong(1, donorId);
-ps.setInt(2, Integer.parseInt(bankId));
-ps.setTimestamp(3, Timestamp.valueOf(appointmentTime));
-
+            ps.setLong(1, donorId);
+            ps.setInt(2, Integer.parseInt(bankId));
+            ps.setTimestamp(3, Timestamp.valueOf(appointmentTime));
 
             ps.executeUpdate();
 
