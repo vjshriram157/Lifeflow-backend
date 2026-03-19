@@ -66,12 +66,12 @@ public class RegisterServlet extends HttpServlet {
                 return;
             }
 
-            // 📝 INSERT NEW USER (PENDING APPROVAL)
+            // 📝 INSERT NEW USER (UNVERIFIED EMAIL)
             String insertSql =
                     "INSERT INTO users (full_name, email, phone, password_hash, blood_group, role, status, city) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?)";
+                    "VALUES (?, ?, ?, ?, ?, ?, 'UNVERIFIED', ?)";
 
-            PreparedStatement ps = conn.prepareStatement(insertSql);
+            PreparedStatement ps = conn.prepareStatement(insertSql, PreparedStatement.RETURN_GENERATED_KEYS);
             ps.setString(1, fullName);
             ps.setString(2, email);
             ps.setString(3, phone);
@@ -80,14 +80,32 @@ public class RegisterServlet extends HttpServlet {
             ps.setString(6, role);
             ps.setString(7, city);
             ps.executeUpdate();
+            
+            ResultSet generatedKeys = ps.getGeneratedKeys();
+            if (generatedKeys.next()) {
+                long userId = generatedKeys.getLong(1);
+                
+                // Generate 6-digit OTP
+                String otp = String.format("%06d", new java.util.Random().nextInt(999999));
+                
+                // Insert OTP into password_resets (reusing this table for tokens)
+                PreparedStatement psToken = conn.prepareStatement("INSERT INTO password_resets (user_id, token) VALUES (?, ?)");
+                psToken.setLong(1, userId);
+                psToken.setString(2, otp);
+                psToken.executeUpdate();
+                
+                // Dispatch real email
+                com.bloodbank.util.EmailService.sendOtpEmail(email, otp);
+            }
 
         } catch (SQLException e) {
+            e.printStackTrace();
             request.setAttribute("error", "Unable to register. Please try again.");
             request.getRequestDispatcher("/register.jsp").forward(request, response);
             return;
         }
 
-        // ✅ Redirect to login page after successful registration
-        response.sendRedirect(request.getContextPath() + "/login.jsp?registered=1");
+        // ✅ Redirect to OTP verification page
+        response.sendRedirect(request.getContextPath() + "/verifyRegistrationOtp.jsp?email=" + email);
     }
 }

@@ -72,11 +72,11 @@ public class AnalyticsServlet extends HttpServlet {
      */
     private JSONArray getDonationsByMonth(Connection conn) throws SQLException {
         String sql = "SELECT YEAR(a.appointment_time) AS yr, MONTH(a.appointment_time) AS mn, " +
-                "a.blood_group AS bg, COUNT(*) AS total " +
+                "u.blood_group AS bg, COUNT(*) AS total " +
                 "FROM appointments a " +
                 "JOIN users u ON u.id = a.donor_id " +
                 "WHERE a.status = 'COMPLETED' " +
-                "GROUP BY yr, mn, bg " +
+                "GROUP BY yr, mn, u.blood_group " +
                 "ORDER BY yr, mn, bg";
         PreparedStatement ps = conn.prepareStatement(sql);
         ResultSet rs = ps.executeQuery();
@@ -99,9 +99,9 @@ public class AnalyticsServlet extends HttpServlet {
      */
     private JSONArray getDemandHeatmap(Connection conn) throws SQLException {
         String sql = "SELECT b.latitude, b.longitude, " +
-                "SUM(GREATEST(0, s.safety_stock - s.units_available)) AS shortage " +
+                "SUM(GREATEST(0, 5 - s.units)) AS shortage " +
                 "FROM blood_banks b " +
-                "JOIN blood_stock s ON s.bank_id = b.id " +
+                "JOIN blood_stock s ON s.blood_bank_id = b.id " +
                 "WHERE b.status = 'APPROVED' " +
                 "GROUP BY b.id, b.latitude, b.longitude";
         PreparedStatement ps = conn.prepareStatement(sql);

@@ -120,5 +120,14 @@
         <welcome-file>index.jsp</welcome-file>
         <welcome-file>index.html</welcome-file>
     </welcome-file-list>
+    <!-- ================= EXPORT REPORT ================= -->
+    <servlet>
+        <servlet-name>ExportReportServlet</servlet-name>
+        <servlet-class>com.bloodbank.servlets.ExportReportServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>ExportReportServlet</servlet-name>
+        <url-pattern>/ExportReport</url-pattern>
+    </servlet-mapping>
 
 </web-app>

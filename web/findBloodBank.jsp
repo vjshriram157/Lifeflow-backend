@@ -1,357 +1,314 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
-    <!DOCTYPE html>
-    <html lang="en">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Find Blood Bank | LifeFlow</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<%=request.getContextPath()%>/assets/css/theme.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .page-header {
+            background: linear-gradient(135deg, rgba(15,23,42,1) 0%, rgba(15,23,42,0.85) 100%), url('https://images.unsplash.com/photo-1615461066841-6116e61058f4?auto=format&fit=crop&q=80') center/cover;
+            padding: 4rem 0;
+            color: white;
+            text-align: center;
+        }
+        .main-container {
+            margin-top: -3rem;
+            position: relative;
+            z-index: 5;
+        }
+        .accent-pill {
+            background: rgba(225, 29, 72, 0.15);
+            color: #ff4d6d;
+            border-radius: 999px;
+            padding: 6px 16px;
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-weight: 700;
+            display: inline-block;
+        }
+        .btn-locator {
+            border: 1px solid rgba(225, 29, 72, 0.3);
+            color: var(--primary-crimson);
+            background: rgba(225, 29, 72, 0.05);
+            transition: var(--transition-smooth);
+        }
+        .btn-locator:hover {
+            background: var(--primary-crimson);
+            color: white;
+        }
+        .distance-chip {
+            background: var(--surface-main);
+            color: var(--text-muted);
+            border: 1px solid #e2e8f0;
+            padding: 4px 12px;
+            border-radius: 50rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
 
-    <head>
-        <meta charset="UTF-8">
-        <title>Find Blood Bank | LifeFlow</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            body {
-                background: #f9fafb;
-                font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            }
-
-            .navbar-brand span {
-                color: #b71c1c;
-                font-weight: 700;
-            }
-
-            .card-elevated {
-                border-radius: 1rem;
-                border: none;
-                box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
-            }
-
-            .accent-pill {
-                background: rgba(183, 28, 28, 0.08);
-                color: #b71c1c;
-                border-radius: 999px;
-                padding: 4px 14px;
-                font-size: 0.75rem;
-                letter-spacing: 0.08em;
-                text-transform: uppercase;
-                font-weight: 600;
-            }
-
-            .bank-row:hover {
-                background: #f1f5f9;
-                transition: background 0.18s ease-out;
-            }
-
-            .badge-stock-safe {
-                background-color: #22c55e;
-            }
-
-            .badge-stock-low {
-                background-color: #f59e0b;
-            }
-
-            .badge-stock-critical {
-                background-color: #dc2626;
-            }
-
-            .btn-crimson {
-                background: linear-gradient(135deg, #b71c1c, #e11d48);
-                border: none;
-                color: #fff;
-            }
-
-            .btn-crimson:hover {
-                background: linear-gradient(135deg, #991b1b, #be123c);
-                color: #fff;
-            }
-
-            .distance-chip {
-                font-size: 0.8rem;
-                padding: 4px 10px;
-                border-radius: 999px;
-                background: #e5e7eb;
-            }
-        </style>
-    </head>
-
-    <body>
-        <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom sticky-top">
-            <div class="container">
-                <a class="navbar-brand" href="#">
-                    <span>LifeFlow</span> Blood Network
-                </a>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark py-3" style="background: var(--sidebar-bg) !important;">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="<%=request.getContextPath()%>/index.jsp">
+                <i class="fa-solid fa-droplet text-danger"></i>
+                <span style="font-family: 'Poppins'; font-weight: 700;">Life<span class="text-danger">Flow</span> Network</span>
+            </a>
+            <div>
+                <a href="login.jsp" class="btn btn-outline-light btn-sm rounded-pill px-3">Sign In</a>
             </div>
-        </nav>
+        </div>
+    </nav>
 
-        <main class="py-5">
-            <div class="container">
-                <div class="row justify-content-center">
-                    <div class="col-lg-10">
-                        <div class="card card-elevated">
-                            <div class="card-body p-4 p-md-5">
-                                <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
-                                    <div>
-                                        <div class="accent-pill mb-2">
-                                            Find a Nearby Blood Bank
-                                        </div>
-                                        <h1 class="h4 mb-1">Search, Compare &amp; Navigate in Seconds</h1>
-                                        <p class="text-muted mb-0">
-                                            Enter your city/pin or share your location to see approved blood banks
-                                            ranked by distance and availability.
-                                        </p>
-                                    </div>
-                                    <div class="text-md-end">
-                                        <button id="btnUseLocation" class="btn btn-outline-danger btn-sm">
-                                            Use my location
-                                        </button>
-                                        <small class="d-block text-muted mt-1" style="font-size: 0.75rem;">
-                                            We only use your location for this search.
-                                        </small>
+    <div class="page-header">
+        <div class="container fade-in-up">
+            <div class="accent-pill mb-3"><i class="fa-solid fa-location-dot me-2"></i> Locator</div>
+            <h1 class="brand-font display-5 fw-bold mb-3">Find a Nearby Blood Bank</h1>
+            <p class="lead text-white-50 mx-auto" style="max-width: 600px;">
+                Search, compare, and instantly map routes to authorized blood banks in your vicinity.
+            </p>
+        </div>
+    </div>
+
+    <main class="main-container pb-5">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-lg-10 fade-in-up delay-100">
+                    <div class="card card-modern p-2 p-md-4">
+                        <div class="card-body">
+                            
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4 pb-3 border-bottom border-light">
+                                <h5 class="mb-0 fw-bold"><i class="fa-solid fa-magnifying-glass me-2 text-danger"></i> Search Criteria</h5>
+                                <button id="btnUseLocation" class="btn btn-locator rounded-pill btn-sm fw-bold px-3 py-2">
+                                    <i class="fa-solid fa-location-crosshairs me-1"></i> Use My GPS
+                                </button>
+                            </div>
+
+                            <form id="searchForm" class="row g-3 align-items-end mb-4">
+                                <div class="col-md-5">
+                                    <label for="city" class="form-label">City / Region</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-0"><i class="fa-solid fa-city text-muted"></i></span>
+                                        <input type="text" class="form-control form-control-modern bg-light border-0" id="city" placeholder="e.g., Manhattan">
                                     </div>
                                 </div>
-
-                                <form id="searchForm" class="row g-3 align-items-end mb-4">
-                                    <div class="col-md-4">
-                                        <label for="city" class="form-label">City / Area</label>
-                                        <input type="text" class="form-control" id="city"
-                                            placeholder="e.g., Pune, Andheri">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label for="pincode" class="form-label">Pin Code</label>
-                                        <input type="text" class="form-control" id="pincode" placeholder="411001">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label for="bloodGroup" class="form-label">Blood Group (optional)</label>
-                                        <select id="bloodGroup" class="form-select">
-                                            <option value="">Any Group</option>
-                                            <option value="A+">A+</option>
-                                            <option value="A-">A-</option>
-                                            <option value="B+">B+</option>
-                                            <option value="B-">B-</option>
-                                            <option value="O+">O+</option>
-                                            <option value="O-">O-</option>
-                                            <option value="AB+">AB+</option>
-                                            <option value="AB-">AB-</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2 d-grid">
-                                        <button type="button" id="btnSearch" class="btn btn-crimson">
-                                            Search
-                                        </button>
-                                    </div>
-                                </form>
-
-                                <div id="resultsMeta" class="d-flex justify-content-between align-items-center mb-2"
-                                    style="display:none;">
-                                    <span class="text-muted" id="resultCount"></span>
-                                    <span class="text-muted" style="font-size: 0.8rem;">
-                                        Distances are approximate using the Haversine formula.
-                                    </span>
+                                <div class="col-md-3">
+                                    <label for="pincode" class="form-label">Postal Code</label>
+                                    <input type="text" class="form-control form-control-modern bg-light border-0" id="pincode" placeholder="10001">
                                 </div>
-
-                                <div class="table-responsive">
-                                    <table class="table align-middle mb-0">
-                                        <thead class="table-light">
-                                            <tr>
-                                                <th>Blood Bank</th>
-                                                <th>Location</th>
-                                                <th>Distance</th>
-                                                <th class="text-center">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="resultsBody">
-                                            <tr id="noResultsRow">
-                                                <td colspan="4" class="text-center text-muted py-4">
-                                                    Start by searching with your city/pin or using your current
-                                                    location.
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                <div class="col-md-4">
+                                    <label for="bloodGroup" class="form-label">Blood Group</label>
+                                    <select id="bloodGroup" class="form-select form-control-modern bg-light border-0">
+                                        <option value="">Any Available</option>
+                                        <option value="A+">A+</option>
+                                        <option value="A-">A-</option>
+                                        <option value="B+">B+</option>
+                                        <option value="B-">B-</option>
+                                        <option value="O+">O+</option>
+                                        <option value="O-">O-</option>
+                                        <option value="AB+">AB+</option>
+                                        <option value="AB-">AB-</option>
+                                    </select>
                                 </div>
+                                <div class="col-12 text-end mt-4">
+                                    <button type="button" id="btnSearch" class="btn btn-premium px-5 rounded-pill">
+                                        Search Facilities <i class="fa-solid fa-arrow-right ms-2"></i>
+                                    </button>
+                                </div>
+                            </form>
+
+                            <div id="resultsMeta" class="d-flex justify-content-between align-items-center mb-3 mt-5" style="display:none !important;">
+                                <h6 class="fw-bold mb-0">Results Found: <span id="resultCount" class="text-danger"></span></h6>
+                                <span class="text-muted" style="font-size: 0.8rem;"><i class="fa-solid fa-satellite me-1"></i> Calculated via Haversine 25km radius</span>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-modern align-middle mb-0">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th>Facility Details</th>
+                                            <th>Location</th>
+                                            <th>Est. Distance</th>
+                                            <th class="text-center">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="resultsBody">
+                                        <tr id="noResultsRow">
+                                            <td colspan="4" class="text-center text-muted py-5">
+                                                <i class="fa-solid fa-map-location-dot h2 text-light mb-3"></i><br>
+                                                Start searching by city, pin code, or your device GPS.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </main>
+        </div>
+    </main>
 
-        <script>
-            const apiBase = '<%= request.getContextPath() %>/api/locator';
+    <script>
+        const apiBase = '<%= request.getContextPath() %>/api/locator';
 
-            function createDirectionsUrl(lat, lng, label) {
-                const encodedLabel = encodeURIComponent(label || 'Blood Bank');
-                return `https://www.google.com/maps/dir/?api=1&destination=\${lat},\${lng}&destination_place_id=\${encodedLabel}`;
+        function createDirectionsUrl(lat, lng, label) {
+            const encodedLabel = encodeURIComponent(label || 'Blood Bank');
+            return `https://www.google.com/maps/dir/?api=1&destination=\${lat},\${lng}&destination_place_id=\${encodedLabel}`;
+        }
+
+        function renderResults(banks) {
+            const body = document.getElementById('resultsBody');
+            const meta = document.getElementById('resultsMeta');
+            const countEl = document.getElementById('resultCount');
+            body.innerHTML = '';
+
+            if (!banks || banks.length === 0) {
+                meta.style.setProperty('display', 'none', 'important');
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="4" class="text-center text-muted py-5 bg-light rounded"><i class="fa-solid fa-magnifying-glass-location h2 text-secondary mb-3"></i><br>No approved blood banks found matching the criteria.</td>';
+                body.appendChild(row);
+                return;
             }
 
+            meta.style.setProperty('display', 'flex', 'important');
+            countEl.textContent = banks.length;
 
-            function renderResults(banks) {
-                const body = document.getElementById('resultsBody');
-                const meta = document.getElementById('resultsMeta');
-                const countEl = document.getElementById('resultCount');
-                body.innerHTML = '';
-
-                if (!banks || banks.length === 0) {
-                    meta.style.display = 'none';
-                    const row = document.createElement('tr');
-                    row.innerHTML = '<td colspan="4" class="text-center text-muted py-4">No approved blood banks found near this location.</td>';
-                    body.appendChild(row);
-                    return;
-                }
-
-                meta.style.display = 'flex';
-                countEl.textContent = `\${banks.length} blood bank(s) found`;
-
-
-                banks.forEach(bank => {
-                    const row = document.createElement('tr');
-                    row.classList.add('bank-row');
-                    row.innerHTML = `
-                <td>
-                    <div class="fw-semibold">\${bank.name}</div>
-                    <div class="text-muted" style="font-size: 0.85rem;">ID: \${bank.id}</div>
-                </td>
-                <td>
-                    <div>\${bank.addressLine1 || ''}</div>
-                    <div class="text-muted" style="font-size: 0.85rem;">\${bank.city || ''} \${bank.pincode || ''}</div>
-                </td>
-                <td>
-                    <span class="distance-chip">
-                        ~\${bank.distanceKm.toFixed(1)} km
-                    </span>
-                </td>
-                <td class="text-center">
-                    <div class="btn-group btn-group-sm" role="group">
-                        <a href="\${createDirectionsUrl(bank.latitude, bank.longitude, bank.name)}"
-                           target="_blank"
-                           class="btn btn-outline-secondary">
-                            Get Directions
-                        </a>
-                        <button type="button"
-                                class="btn btn-crimson"
-                                onclick="onBookAppointment(\${bank.id})">
-                            Book Appointment
-                        </button>
-                    </div>
-                </td>
-            `;
-
-                    body.appendChild(row);
-                });
-            }
-
-            function onBookAppointment(bankId) {
-                // Placeholder: wire into your booking flow
-                alert('Redirecting to booking flow for bank ID: ' + bankId);
-            }
-
-            async function searchByLocation(lat, lng) {
-                const bloodGroup = document.getElementById('bloodGroup').value;
-                const url = new URL(apiBase, window.location.origin);
-                url.searchParams.set('lat', lat);
-                url.searchParams.set('lng', lng);
-                url.searchParams.set('radiusKm', '25');
-                if (bloodGroup) {
-                    url.searchParams.set('bloodGroup', bloodGroup);
-                }
-
-                const body = document.getElementById('resultsBody');
-                body.innerHTML = `
-            <tr>
-                <td colspan="4" class="text-center py-4">
-                    <div class="spinner-border text-danger" role="status" style="width: 1.75rem; height: 1.75rem;">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                </td>
-            </tr>
+            banks.forEach((bank, index) => {
+                const row = document.createElement('tr');
+                row.classList.add('fade-in-up');
+                row.style.animationDelay = `\${index * 50}ms`;
+                row.innerHTML = `
+            <td>
+                <div class="fw-bold text-dark">\${bank.name}</div>
+                <div class="text-muted" style="font-size: 0.8rem;"><i class="fa-solid fa-id-badge me-1"></i> ID #\${bank.id}</div>
+            </td>
+            <td>
+                <div class="text-dark">\${bank.addressLine1 || '-'}</div>
+                <div class="text-muted" style="font-size: 0.85rem;">\${bank.city || ''} \${bank.pincode || ''}</div>
+            </td>
+            <td>
+                <span class="distance-chip">
+                    <i class="fa-solid fa-route me-1 text-danger"></i> ~\${bank.distanceKm.toFixed(1)} km
+                </span>
+            </td>
+            <td class="text-center">
+                <a href="\${createDirectionsUrl(bank.latitude, bank.longitude, bank.name)}"
+                   target="_blank"
+                   class="btn btn-outline-dark btn-sm rounded-pill px-3 me-2">
+                    <i class="fa-solid fa-diamond-turn-right"></i> Maps
+                </a>
+                <button type="button"
+                        class="btn btn-premium btn-sm rounded-pill px-3"
+                        onclick="onBookAppointment(\${bank.id})">
+                    Book <i class="fa-solid fa-calendar-check ms-1"></i>
+                </button>
+            </td>
         `;
+                body.appendChild(row);
+            });
+        }
 
-                try {
-                    const resp = await fetch(url.toString());
-                    const data = await resp.json();
-                    renderResults(data.banks || []);
-                } catch (e) {
-                    body.innerHTML = `
-                <tr>
-                    <td colspan="4" class="text-center text-danger py-4">
-                        Something went wrong while fetching results.
-                    </td>
-                </tr>
-            `;
-                }
+        function onBookAppointment(bankId) {
+            alert('To book an appointment at ID ' + bankId + ', please Sign In via the Donor Dashboard.');
+            window.location.href = '<%=request.getContextPath()%>/login.jsp';
+        }
+
+        async function searchByLocation(lat, lng) {
+            const bloodGroup = document.getElementById('bloodGroup').value;
+            const url = new URL(apiBase, window.location.origin);
+            url.searchParams.set('lat', lat);
+            url.searchParams.set('lng', lng);
+            url.searchParams.set('radiusKm', '50'); // Increased radius
+            if (bloodGroup) url.searchParams.set('bloodGroup', bloodGroup);
+
+            setLoading();
+            try {
+                const resp = await fetch(url.toString());
+                const data = await resp.json();
+                renderResults(data.banks || []);
+            } catch (e) {
+                setError();
             }
+        }
 
-            document.getElementById('btnUseLocation').addEventListener('click', () => {
-                if (!navigator.geolocation) {
-                    alert('Geolocation is not supported by this browser.');
+        document.getElementById('btnUseLocation').addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by your browser.');
+                return;
+            }
+            document.getElementById('btnUseLocation').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Locating...';
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    document.getElementById('btnUseLocation').innerHTML = '<i class="fa-solid fa-location-crosshairs me-1"></i> Use My GPS';
+                    searchByLocation(pos.coords.latitude, pos.coords.longitude);
+                },
+                () => {
+                    document.getElementById('btnUseLocation').innerHTML = '<i class="fa-solid fa-location-crosshairs me-1"></i> Use My GPS';
+                    alert('Unable to access location. Ensure tracking is permitted or manually search City/Pin.');
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        });
+
+        async function searchByAddress(city, pincode) {
+            const bloodGroup = document.getElementById('bloodGroup').value;
+            const url = new URL(apiBase, window.location.origin);
+            if (city) url.searchParams.set('city', city);
+            if (pincode) url.searchParams.set('pincode', pincode);
+            url.searchParams.set('radiusKm', '50');
+            if (bloodGroup) url.searchParams.set('bloodGroup', bloodGroup);
+
+            setLoading();
+            try {
+                const resp = await fetch(url.toString());
+                const data = await resp.json();
+                if (data.error) {
+                    const body = document.getElementById('resultsBody');
+                    body.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-5">\${data.error}</td></tr>`;
                     return;
                 }
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        searchByLocation(pos.coords.latitude, pos.coords.longitude);
-                    },
-                    () => {
-                        alert('Unable to access your location. Please allow location permission or search by city/pin.');
-                    },
-                    { enableHighAccuracy: true, timeout: 10000 }
-                );
-            });
+                renderResults(data.banks || []);
+            } catch (e) {
+                setError();
+            }
+        }
 
+        document.getElementById('btnSearch').addEventListener('click', () => {
+            const city = document.getElementById('city').value.trim();
+            const pincode = document.getElementById('pincode').value.trim();
 
-            async function searchByAddress(city, pincode) {
-                const bloodGroup = document.getElementById('bloodGroup').value;
-                const url = new URL(apiBase, window.location.origin);
-                if (city) url.searchParams.set('city', city);
-                if (pincode) url.searchParams.set('pincode', pincode);
-                url.searchParams.set('radiusKm', '25');
-                if (bloodGroup) url.searchParams.set('bloodGroup', bloodGroup);
+            if (!city && !pincode) {
+                alert('Please enter a City or Postal Code to search by address.');
+                return;
+            }
+            searchByAddress(city, pincode);
+        });
 
-                const body = document.getElementById('resultsBody');
-                body.innerHTML = `
+        function setLoading() {
+            document.getElementById('resultsBody').innerHTML = `
             <tr>
-                <td colspan="4" class="text-center py-4">
-                    <div class="spinner-border text-danger" role="status" style="width: 1.75rem; height: 1.75rem;">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
+                <td colspan="4" class="text-center py-5">
+                    <div class="spinner-border text-danger" role="status"></div>
+                    <div class="mt-2 text-muted fw-bold">Querying Data...</div>
                 </td>
-            </tr>
-        `;
-
-                try {
-                    const resp = await fetch(url.toString());
-                    const data = await resp.json();
-
-                    if (data.error) {
-                        body.innerHTML = `
-                    <tr><td colspan="4" class="text-center text-danger py-4">\${data.error}</td></tr>
-                `;
-                        return;
-                    }
-
-                    renderResults(data.banks || []);
-                } catch (e) {
-                    body.innerHTML = `
-                <tr>
-                    <td colspan="4" class="text-center text-danger py-4">
-                        Something went wrong while fetching results.
-                    </td>
-                </tr>
-            `;
-                }
-            }
-
-            document.getElementById('btnSearch').addEventListener('click', () => {
-                const city = document.getElementById('city').value.trim();
-                const pincode = document.getElementById('pincode').value.trim();
-
-                if (!city && !pincode) {
-                    alert('Please enter a City or Pincode to search.');
-                    return;
-                }
-
-                searchByAddress(city, pincode);
-            });
-
-        </script>
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    </body>
-
-    </html>
+            </tr>`;
+        }
+        function setError() {
+            document.getElementById('resultsBody').innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center text-danger py-5 fw-bold">
+                    <i class="fa-solid fa-triangle-exclamation h3"></i><br>
+                    Network failure extracting resources.
+                </td>
+            </tr>`;
+        }
+    </script>
+</body>
+</html>

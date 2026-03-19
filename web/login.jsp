@@ -3,93 +3,133 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Sign in | LifeFlow</title>
+    <title>Sign In | LifeFlow</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<%=request.getContextPath()%>/assets/css/theme.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         body {
-            background: #0f172a;
+            background: url('https://images.unsplash.com/photo-1615461066841-6116e61058f4?auto=format&fit=crop&q=80&w=2000') no-repeat center center;
+            background-size: cover;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #0f172a;
+            position: relative;
         }
-        .card-elevated {
-            border-radius: 1.25rem;
-            border: none;
-            box-shadow: 0 24px 70px rgba(15, 23, 42, 0.55);
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.85);
+            z-index: 1;
+        }
+        .login-container {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            max-width: 480px;
+            padding: 1rem;
         }
         .brand-text span {
-            color: #f97373;
-            font-weight: 700;
+            color: var(--primary-crimson);
+            font-weight: 800;
         }
-        .btn-crimson {
-            background: linear-gradient(135deg, #b91c1c, #fb7185);
-            border: none;
+        .logo-icon {
+            color: var(--primary-crimson);
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            filter: drop-shadow(0 0 10px rgba(225,29,72,0.4));
         }
-        .btn-crimson:hover {
-            background: linear-gradient(135deg, #991b1b, #f97373);
+        .custom-input-group .input-group-text, 
+        .custom-input-group .form-control {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        .custom-input-group .form-control:focus {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--primary-crimson);
+            box-shadow: 0 0 0 4px rgba(225, 29, 72, 0.1);
+        }
+        .custom-input-group .form-control::placeholder {
+            color: rgba(255, 255, 255, 0.4);
         }
     </style>
 </head>
 <body>
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-lg-5">
-            <div class="card card-elevated">
-                <div class="card-body p-4 p-md-5">
-                    <div class="mb-4 text-center">
-                        <div class="brand-text h4 mb-1 text-dark">Welcome back to <span>LifeFlow</span></div>
-                        <p class="text-muted mb-0" style="font-size: 0.9rem;">
-                            Sign in as Admin, Blood Bank, or Donor using your approved account.
-                        </p>
-                    </div>
-
-                    <%
-                        String error = (String) request.getAttribute("error");
-                        String registered = request.getParameter("registered");
-                        if (registered != null) {
-                    %>
-                    <div class="alert alert-success">
-                        Registration successful. Your account is pending admin approval.
-                    </div>
-                    <%
-                        }
-                        if (error != null) {
-                    %>
-                    <div class="alert alert-danger"><%= error %></div>
-                    <%
-                        }
-                    %>
-
-                    <form method="post" action="<%= request.getContextPath() %>/LoginServlet" novalidate>
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control" id="email" name="email" required autofocus>
-                        </div>
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div class="form-text">
-                                New donor?
-                                <a href="<%= request.getContextPath() %>/register.jsp">Create account</a>
-                            </div>
-                        </div>
-                        <div class="d-grid">
-                            <button type="submit" class="btn btn-crimson text-white">
-                                Sign in
-                            </button>
-                        </div>
-                    </form>
-                </div>
+<div class="overlay"></div>
+<div class="login-container fade-in-up">
+    <div class="card text-white p-2 p-md-4" style="background-color: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 1.5rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+        <div class="card-body">
+            <div class="text-center mb-4">
+                <i class="fa-solid fa-truck-medical logo-icon"></i>
+                <div class="brand-text h3 mb-2">Welcome to <span>LifeFlow</span></div>
+                <p class="text-white-50" style="font-size: 0.95rem;">
+                    Securely access your Admin, Donor, or Bank dashboard.
+                </p>
             </div>
+
+            <%
+                String error = (String) request.getAttribute("error");
+                String registered = request.getParameter("registered");
+                if (registered != null) {
+            %>
+            <div class="alert alert-success bg-transparent border-success text-success d-flex align-items-center mb-4">
+                <i class="fa-solid fa-circle-check me-2"></i> Registration successful. Pending approval.
+            </div>
+            <%
+                }
+                if (error != null) {
+            %>
+            <div class="alert alert-danger bg-transparent border-danger text-danger d-flex align-items-center mb-4">
+                <i class="fa-solid fa-triangle-exclamation me-2"></i> <%= error %>
+            </div>
+            <%
+                }
+            %>
+
+            <form method="post" action="<%= request.getContextPath() %>/LoginServlet" novalidate>
+                <div class="mb-4">
+                    <label for="email" class="form-label text-white-50">Email Address</label>
+                    <div class="input-group custom-input-group">
+                        <span class="input-group-text border-end-0">
+                            <i class="fa-solid fa-envelope text-white-50"></i>
+                        </span>
+                        <input type="email" class="form-control border-start-0" 
+                               id="email" name="email" required autofocus placeholder="name@example.com">
+                    </div>
+                </div>
+                
+                <div class="mb-2">
+                    <label class="form-label text-white-50 small fw-bold tracking-wide">PASSWORD</label>
+                    <div class="input-group custom-input-group">
+                        <span class="input-group-text border-end-0"><i class="fa-solid fa-lock"></i></span>
+                        <input type="password" name="password" class="form-control border-start-0 ps-0" placeholder="••••••••" required>
+                    </div>
+                </div>
+                
+                <div class="text-end mb-4">
+                    <a href="forgotPassword.jsp" class="text-danger text-decoration-none small fw-bold hover-white" style="transition: color 0.3s ease;">Forgot Password?</a>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div class="form-check">
+                        <input class="form-check-input bg-transparent border-secondary" type="checkbox" id="rememberMe">
+                        <label class="form-check-label text-white-50" for="rememberMe" style="font-size: 0.9rem;">Remember me</label>
+                    </div>
+                    <a href="<%= request.getContextPath() %>/register.jsp" class="text-decoration-none fw-bold" style="color: var(--primary-light); font-size: 0.9rem;">Create account</a>
+                </div>
+                
+                <div class="d-grid mt-2">
+                    <button type="submit" class="btn btn-premium py-3 fs-6">
+                        <i class="fa-solid fa-arrow-right-to-bracket me-2"></i> Sign In to Dashboard
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-
