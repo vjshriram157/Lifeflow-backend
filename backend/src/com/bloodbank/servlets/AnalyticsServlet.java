@@ -1,6 +1,9 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -11,10 +14,11 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 /**
  * JSON analytics/heatmap API for dashboards.
@@ -40,15 +44,15 @@ public class AnalyticsServlet extends HttpServlet {
 
         JSONObject result = new JSONObject();
 
-        try (PrintWriter out = response.getWriter();
-             Connection conn = DBConnectionUtil.getConnection()) {
+        try (PrintWriter out = response.getWriter()) {
+            Firestore db = FirebaseConfig.getFirestore();
 
             if ("donationsByMonth".equalsIgnoreCase(metric)) {
                 result.put("metric", "donationsByMonth");
-                result.put("data", getDonationsByMonth(conn));
+                result.put("data", getDonationsByMonth(db));
             } else if ("heatmapDemand".equalsIgnoreCase(metric)) {
                 result.put("metric", "heatmapDemand");
-                result.put("points", getDemandHeatmap(conn));
+                result.put("points", getDemandHeatmap(db));
             } else {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 result.put("error", "Unknown metric");
@@ -57,67 +61,111 @@ public class AnalyticsServlet extends HttpServlet {
             }
 
             out.print(result.toString());
-        } catch (SQLException e) {
+        } catch (Exception e) {
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             result.put("error", "Database error: " + e.getMessage());
-            response.getWriter().print(result.toString());
+            try {
+                response.getWriter().print(result.toString());
+            } catch (IOException ignored) {}
         }
     }
 
-    /**
-     * For Chart.js line/bar chart:
-     * SELECT YEAR(appointment_time), MONTH(appointment_time), blood_group, COUNT(*)
-     * FROM appointments WHERE status = 'COMPLETED'
-     * GROUP BY YEAR, MONTH, blood_group
-     */
-    private JSONArray getDonationsByMonth(Connection conn) throws SQLException {
-        String sql = "SELECT YEAR(a.appointment_time) AS yr, MONTH(a.appointment_time) AS mn, " +
-                "u.blood_group AS bg, COUNT(*) AS total " +
-                "FROM appointments a " +
-                "JOIN users u ON u.id = a.donor_id " +
-                "WHERE a.status = 'COMPLETED' " +
-                "GROUP BY yr, mn, u.blood_group " +
-                "ORDER BY yr, mn, bg";
-        PreparedStatement ps = conn.prepareStatement(sql);
-        ResultSet rs = ps.executeQuery();
+    private JSONArray getDonationsByMonth(Firestore db) throws InterruptedException, ExecutionException {
+        // Fetch all completed appointments
+        QuerySnapshot apptsSnapshot = db.collection("appointments").whereEqualTo("status", "COMPLETED").get().get();
+        // Fetch all users to map donor_id -> blood_group
+        QuerySnapshot usersSnapshot = db.collection("users").get().get();
+        
+        Map<String, String> userBloodGroupMap = new HashMap<>();
+        for (QueryDocumentSnapshot doc : usersSnapshot.getDocuments()) {
+            userBloodGroupMap.put(doc.getId(), doc.getString("blood_group"));
+        }
+
+        // Map: Year-Month-BloodGroup -> Count
+        Map<String, Integer> counts = new HashMap<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        for (QueryDocumentSnapshot doc : apptsSnapshot.getDocuments()) {
+            String donorId = doc.getString("donor_id");
+            String bg = userBloodGroupMap.getOrDefault(donorId, "Unknown");
+            
+            String timeStr = doc.getString("appointment_time");
+            if (timeStr == null || timeStr.isEmpty()) continue;
+            
+            try {
+                LocalDateTime dateTime = LocalDateTime.parse(timeStr, formatter);
+                int year = dateTime.getYear();
+                int month = dateTime.getMonthValue();
+                
+                String key = year + "-" + month + "-" + bg;
+                counts.put(key, counts.getOrDefault(key, 0) + 1);
+            } catch (Exception ignored) {
+                // Invalid date format
+            }
+        }
+
         JSONArray arr = new JSONArray();
-        while (rs.next()) {
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            String[] parts = entry.getKey().split("-");
+            int year = Integer.parseInt(parts[0]);
+            int month = Integer.parseInt(parts[1]);
+            String bg = parts[2];
+            
             JSONObject row = new JSONObject();
-            row.put("year", rs.getInt("yr"));
-            row.put("month", rs.getInt("mn")); // 1-12, map to labels client-side
-            row.put("bloodGroup", rs.getString("bg"));
-            row.put("count", rs.getInt("total"));
+            row.put("year", year);
+            row.put("month", month);
+            row.put("bloodGroup", bg);
+            row.put("count", entry.getValue());
             arr.put(row);
         }
         return arr;
     }
 
-    /**
-     * For Google Maps heatmap layer:
-     * Return each bank as a point with:
-     *   lat, lng, weight = SUM(max(0, safety_stock - units_available)) over all groups.
-     */
-    private JSONArray getDemandHeatmap(Connection conn) throws SQLException {
-        String sql = "SELECT b.latitude, b.longitude, " +
-                "SUM(GREATEST(0, 5 - s.units)) AS shortage " +
-                "FROM blood_banks b " +
-                "JOIN blood_stock s ON s.blood_bank_id = b.id " +
-                "WHERE b.status = 'APPROVED' " +
-                "GROUP BY b.id, b.latitude, b.longitude";
-        PreparedStatement ps = conn.prepareStatement(sql);
-        ResultSet rs = ps.executeQuery();
-        JSONArray arr = new JSONArray();
-        while (rs.next()) {
-            double shortage = rs.getDouble("shortage");
-            if (shortage <= 0) {
-                continue; // skip banks without shortage to keep heatmap clean
-            }
-            JSONObject point = new JSONObject();
-            point.put("lat", rs.getDouble("latitude"));
-            point.put("lng", rs.getDouble("longitude"));
-            point.put("weight", shortage);
-            arr.put(point);
+    private JSONArray getDemandHeatmap(Firestore db) throws InterruptedException, ExecutionException {
+        // Query approved banks
+        QuerySnapshot banksSnapshot = db.collection("blood_banks").whereEqualTo("status", "APPROVED").get().get();
+        
+        // Map: bank_id -> (lat, lng, shortage)
+        class BankPoint {
+            Double lat;
+            Double lng;
+            double shortage = 0;
+            BankPoint(Double lat, Double lng) { this.lat = lat; this.lng = lng; }
         }
+        
+        Map<String, BankPoint> bankCoords = new HashMap<>();
+        for (QueryDocumentSnapshot doc : banksSnapshot.getDocuments()) {
+            Double lat = doc.getDouble("latitude");
+            Double lng = doc.getDouble("longitude");
+            if (lat != null && lng != null) {
+                bankCoords.put(doc.getId(), new BankPoint(lat, lng));
+            }
+        }
+        
+        // Query blood stock
+        QuerySnapshot stockSnapshot = db.collection("blood_stock").get().get();
+        for (QueryDocumentSnapshot doc : stockSnapshot.getDocuments()) {
+            String bankId = doc.getString("blood_bank_id");
+            if (bankId != null && bankCoords.containsKey(bankId)) {
+                Long unitsLong = doc.getLong("units");
+                long units = unitsLong != null ? unitsLong : 0;
+                
+                long shortage = Math.max(0, 5 - units);
+                bankCoords.get(bankId).shortage += shortage;
+            }
+        }
+        
+        JSONArray arr = new JSONArray();
+        for (BankPoint bp : bankCoords.values()) {
+            if (bp.shortage > 0) {
+                JSONObject point = new JSONObject();
+                point.put("lat", bp.lat);
+                point.put("lng", bp.lng);
+                point.put("weight", bp.shortage);
+                arr.put(point);
+            }
+        }
+        
         return arr;
     }
 }

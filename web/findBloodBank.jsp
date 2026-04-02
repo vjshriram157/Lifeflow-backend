@@ -50,6 +50,24 @@
             font-size: 0.8rem;
             font-weight: 600;
         }
+        @media (max-width: 768px) {
+            .page-header {
+                padding: 2rem 1rem;
+            }
+            .brand-font.display-5 {
+                font-size: 1.75rem !important;
+            }
+            .lead {
+                font-size: 1rem !important;
+            }
+            .card-modern {
+                padding: 1rem !important;
+            }
+            .btn-locator {
+                width: 100%;
+                margin-top: 0.5rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -216,8 +234,7 @@
         }
 
         function onBookAppointment(bankId) {
-            alert('To book an appointment at ID ' + bankId + ', please Sign In via the Donor Dashboard.');
-            window.location.href = '<%=request.getContextPath()%>/login.jsp';
+            window.location.href = '<%=request.getContextPath()%>/BookAppointmentServlet?prefillBankId=' + bankId;
         }
 
         async function searchByLocation(lat, lng) {

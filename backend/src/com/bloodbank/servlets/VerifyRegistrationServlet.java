@@ -1,6 +1,10 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -8,9 +12,8 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 @WebServlet("/VerifyRegistrationServlet")
 public class VerifyRegistrationServlet extends HttpServlet {
@@ -26,30 +29,37 @@ public class VerifyRegistrationServlet extends HttpServlet {
             return;
         }
 
-        try (Connection conn = DBConnectionUtil.getConnection()) {
-            // Find user id and token matching
-            PreparedStatement psFind = conn.prepareStatement(
-                "SELECT pr.user_id FROM password_resets pr " +
-                "JOIN users u ON pr.user_id = u.id " +
-                "WHERE pr.token = ? AND u.email = ? AND u.status = 'UNVERIFIED'"
-            );
-            psFind.setString(1, otp);
-            psFind.setString(2, email);
-            ResultSet rs = psFind.executeQuery();
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
             
-            if (rs.next()) {
-                long userId = rs.getLong("user_id");
-                
-                // Update user status from UNVERIFIED to PENDING (waiting on Admin Approval)
-                PreparedStatement psUpdate = conn.prepareStatement("UPDATE users SET status = 'PENDING' WHERE id = ?");
-                psUpdate.setLong(1, userId);
-                psUpdate.executeUpdate();
+            // Find User by email and UNVERIFIED
+            ApiFuture<QuerySnapshot> userFuture = db.collection("users")
+                    .whereEqualTo("email", email)
+                    .whereEqualTo("status", "UNVERIFIED")
+                    .get();
+            List<QueryDocumentSnapshot> users = userFuture.get().getDocuments();
+
+            if (users.isEmpty()) {
+                request.setAttribute("error", "Invalid or expired OTP.");
+                request.getRequestDispatcher("/verifyRegistrationOtp.jsp?email=" + email).forward(request, response);
+                return;
+            }
+
+            String userId = users.get(0).getId();
+
+            // Find matching OTP in password_resets
+            ApiFuture<QuerySnapshot> tokenFuture = db.collection("password_resets")
+                    .whereEqualTo("user_id", userId)
+                    .whereEqualTo("token", otp)
+                    .get();
+            List<QueryDocumentSnapshot> tokens = tokenFuture.get().getDocuments();
+
+            if (!tokens.isEmpty()) {
+                // Update user status
+                db.collection("users").document(userId).update("status", "PENDING").get();
                 
                 // Delete used OTP
-                PreparedStatement psDelete = conn.prepareStatement("DELETE FROM password_resets WHERE token = ? AND user_id = ?");
-                psDelete.setString(1, otp);
-                psDelete.setLong(2, userId);
-                psDelete.executeUpdate();
+                db.collection("password_resets").document(tokens.get(0).getId()).delete().get();
                 
                 // Redirect back to login with success message
                 response.sendRedirect(request.getContextPath() + "/login.jsp?registered=1");
@@ -58,7 +68,7 @@ public class VerifyRegistrationServlet extends HttpServlet {
                 request.getRequestDispatcher("/verifyRegistrationOtp.jsp?email=" + email).forward(request, response);
             }
             
-        } catch (Exception e) {
+        } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
             request.setAttribute("error", "An error occurred. Please try again later.");
             request.getRequestDispatcher("/verifyRegistrationOtp.jsp?email=" + email).forward(request, response);

@@ -99,6 +99,13 @@
             <artifactId>javax.mail</artifactId>
             <version>1.6.2</version>
         </dependency>
+
+        <!-- Firebase Admin SDK -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>9.2.0</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -124,15 +131,21 @@
                 </configuration>
             </plugin>
 
-            <!-- Tomcat Plugin for local development -->
+            <!-- Jetty Plugin for local development -->
             <plugin>
-                <groupId>org.apache.tomcat.maven</groupId>
-                <artifactId>tomcat7-maven-plugin</artifactId>
-                <version>2.2</version>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-maven-plugin</artifactId>
+                <version>9.4.53.v20231009</version>
                 <configuration>
-                    <port>9090</port>
-                    <path>/blood-bank</path>
-                    <warSourceDirectory>../web</warSourceDirectory>
+                    <webApp>
+                        <contextPath>/blood-bank</contextPath>
+                        <resourceBases>
+                            <resourceBase>../web</resourceBase>
+                        </resourceBases>
+                    </webApp>
+                    <httpConnector>
+                        <port>9090</port>
+                    </httpConnector>
                 </configuration>
             </plugin>
         </plugins>

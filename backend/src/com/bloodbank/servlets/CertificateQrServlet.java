@@ -1,6 +1,8 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.Firestore;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
 import com.google.zxing.WriterException;
@@ -16,10 +18,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.EnumMap;
 import java.util.Map;
 
@@ -35,31 +33,22 @@ public class CertificateQrServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        String appointmentParam = request.getParameter("appointmentId");
-        if (appointmentParam == null) {
+        String appointmentId = request.getParameter("appointmentId");
+        if (appointmentId == null || appointmentId.isEmpty()) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing appointmentId");
             return;
         }
 
-        long appointmentId;
+        // Verify that appointment exists and is completed
         try {
-            appointmentId = Long.parseLong(appointmentParam);
-        } catch (NumberFormatException e) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid appointmentId");
-            return;
-        }
-
-        // Optional: verify that appointment exists and is completed
-        try (Connection conn = DBConnectionUtil.getConnection()) {
-            PreparedStatement ps = conn.prepareStatement(
-                    "SELECT COUNT(1) FROM appointments WHERE id = ? AND status = 'COMPLETED'");
-            ps.setLong(1, appointmentId);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next() && rs.getInt(1) == 0) {
+            Firestore db = FirebaseConfig.getFirestore();
+            DocumentSnapshot apptDoc = db.collection("appointments").document(appointmentId).get().get();
+            
+            if (!apptDoc.exists() || !"COMPLETED".equals(apptDoc.getString("status"))) {
                 response.sendError(HttpServletResponse.SC_NOT_FOUND, "No completed appointment");
                 return;
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
             return;
         }

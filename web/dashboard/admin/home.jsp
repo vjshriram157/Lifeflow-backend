@@ -1,5 +1,5 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
-<%@ page import="java.sql.*,com.bloodbank.util.DBConnectionUtil"%>
+<%@ page import="com.bloodbank.util.FirebaseConfig,com.google.cloud.firestore.*,com.google.api.core.ApiFuture,java.util.List" %>
 <%
     String role = (String) session.getAttribute("role");
     if (role == null || !"ADMIN".equalsIgnoreCase(role)) {
@@ -8,24 +8,13 @@
     }
 
     int totalDonors = 0, totalBanks = 0, pendingApprovals = 0, activeAlerts = 0;
-    Connection conn = null; Statement st = null; ResultSet rs = null;
-
     try {
-        conn = DBConnectionUtil.getConnection();
-        st = conn.createStatement();
-        rs = st.executeQuery("SELECT COUNT(*) FROM users WHERE role='DONOR' AND status='APPROVED'");
-        if (rs.next()) totalDonors = rs.getInt(1);
-        rs = st.executeQuery("SELECT COUNT(*) FROM blood_banks WHERE status='APPROVED'");
-        if (rs.next()) totalBanks = rs.getInt(1);
-        rs = st.executeQuery("SELECT COUNT(*) FROM users WHERE status='PENDING'");
-        if (rs.next()) pendingApprovals = rs.getInt(1);
-        rs = st.executeQuery("SELECT COUNT(*) FROM emergency_alerts");
-        if (rs.next()) activeAlerts = rs.getInt(1);
-    } catch (Exception e) {} finally {
-        try { if(rs!=null) rs.close(); }catch(Exception e){}
-        try { if(st!=null) st.close(); }catch(Exception e){}
-        try { if(conn!=null) conn.close(); }catch(Exception e){}
-    }
+        Firestore db = FirebaseConfig.getFirestore();
+        totalDonors = db.collection("users").whereEqualTo("role", "DONOR").whereEqualTo("status", "APPROVED").get().get().size();
+        totalBanks = db.collection("blood_banks").whereEqualTo("status", "APPROVED").get().get().size();
+        pendingApprovals = db.collection("users").whereEqualTo("status", "PENDING").get().get().size();
+        activeAlerts = db.collection("emergency_alerts").get().get().size();
+    } catch (Exception e) {}
 %>
 <!DOCTYPE html>
 <html lang="en">
@@ -132,26 +121,38 @@
                                 </thead>
                                 <tbody>
                                 <%
-                                Connection c2=null; PreparedStatement ps2=null; ResultSet rs2=null;
                                 try {
-                                    c2 = DBConnectionUtil.getConnection();
-                                    ps2 = c2.prepareStatement("SELECT full_name, role, status, created_at FROM users ORDER BY created_at DESC LIMIT 5");
-                                    rs2 = ps2.executeQuery();
-                                    while (rs2.next()) {
-                                        String stat = rs2.getString("status");
+                                    Firestore db = FirebaseConfig.getFirestore();
+                                    // Order by descending created_at to get latest.
+                                    // Due to limitations of not having an index in dev maybe, but limit(5) and orderBy is usually fine.
+                                    List<QueryDocumentSnapshot> recentUsers = db.collection("users")
+                                        .orderBy("created_at", com.google.cloud.firestore.Query.Direction.DESCENDING)
+                                        .limit(5).get().get().getDocuments();
+                                    
+                                    for (QueryDocumentSnapshot doc : recentUsers) {
+                                        String stat = doc.getString("status");
                                         String badgeCls = "badge-soft-success";
                                         if ("PENDING".equals(stat)) badgeCls = "badge-soft-warning";
                                         if ("REJECTED".equals(stat)) badgeCls = "badge-soft-danger";
+                                        
+                                        java.util.Date created = null;
+                                        Object createdAtObj = doc.get("created_at");
+                                        if (createdAtObj instanceof com.google.cloud.Timestamp) {
+                                            created = ((com.google.cloud.Timestamp) createdAtObj).toDate();
+                                        } else if (createdAtObj instanceof String) {
+                                            try {
+                                                created = java.sql.Timestamp.valueOf((String) createdAtObj);
+                                            } catch (Exception ignores) {}
+                                        }
                                 %>
                                     <tr>
-                                        <td><div class="fw-bold text-dark"><%= rs2.getString("full_name") %></div></td>
-                                        <td><span class="badge badge-soft-info"><%= rs2.getString("role") %></span></td>
+                                        <td><div class="fw-bold text-dark"><%= doc.getString("full_name") %></div></td>
+                                        <td><span class="badge badge-soft-info"><%= doc.getString("role") %></span></td>
                                         <td><span class="badge <%=badgeCls%>"><%= stat %></span></td>
-                                        <td class="text-muted" style="font-size:0.85rem;"><i class="fa-regular fa-calendar me-1"></i> <%= rs2.getTimestamp("created_at") %></td>
+                                        <td class="text-muted" style="font-size:0.85rem;"><i class="fa-regular fa-calendar me-1"></i> <%= created != null ? new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(created) : "N/A" %></td>
                                     </tr>
                                 <%  }
                                 } catch(Exception e) { out.print("<tr><td colspan='4'>Error: "+e.getMessage()+"</td></tr>"); }
-                                finally { try{if(rs2!=null)rs2.close();}catch(Exception e){} try{if(ps2!=null)ps2.close();}catch(Exception e){} try{if(c2!=null)c2.close();}catch(Exception e){} }
                                 %>
                                 </tbody>
                             </table>

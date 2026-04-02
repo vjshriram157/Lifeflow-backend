@@ -1,14 +1,24 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 
 import javax.servlet.ServletException;
-import javax.servlet.http.*;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 import java.io.IOException;
-import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+@WebServlet("/BookAppointmentServlet")
 public class BookAppointmentServlet extends HttpServlet {
 
     // 🔹 Load blood banks for dropdown
@@ -16,23 +26,33 @@ public class BookAppointmentServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        try (Connection con = DBConnectionUtil.getConnection()) {
-
-            String sql = "SELECT id, bank_name FROM blood_banks";
-
-            PreparedStatement ps = con.prepareStatement(sql);
-            ResultSet rs = ps.executeQuery();
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
+            QuerySnapshot querySnapshot = db.collection("blood_banks").whereEqualTo("status", "APPROVED").get().get();
 
             List<String[]> banks = new ArrayList<>();
 
-            while (rs.next()) {
+            for (QueryDocumentSnapshot document : querySnapshot.getDocuments()) {
                 banks.add(new String[]{
-                        rs.getString("id"),
-                        rs.getString("bank_name")
+                        document.getId(),
+                        document.getString("bank_name")
                 });
             }
 
             request.setAttribute("banks", banks);
+            
+            // Pass prefill parameter if it exists
+            String prefillBankId = request.getParameter("prefillBankId");
+            if (prefillBankId != null && !prefillBankId.trim().isEmpty()) {
+                request.setAttribute("prefillBankId", prefillBankId.trim());
+            }
+
+            // Handle Flash Error messages
+            String bookingError = (String) request.getSession().getAttribute("bookingError");
+            if (bookingError != null) {
+                request.setAttribute("bookingError", bookingError);
+                request.getSession().removeAttribute("bookingError");
+            }
 
             request.getRequestDispatcher("/dashboard/donor/bookAppointment.jsp")
                    .forward(request, response);
@@ -49,9 +69,9 @@ public class BookAppointmentServlet extends HttpServlet {
             throws ServletException, IOException {
 
         HttpSession session = request.getSession();
-        Long donorId = (Long) session.getAttribute("userId");
+        String donorId = (String) session.getAttribute("userId"); // Now expects a string from Firestore
 
-        if (donorId == null) {
+        if (donorId == null || donorId.isEmpty()) {
             response.sendRedirect(request.getContextPath() + "/login.jsp");
             return;
         }
@@ -59,38 +79,33 @@ public class BookAppointmentServlet extends HttpServlet {
         String bankId = request.getParameter("bankId");
         String appointmentTime = request.getParameter("appointmentTime");
 
-        try (Connection con = DBConnectionUtil.getConnection()) {
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
 
             // 🔴 CHECK STRIKE COUNT BEFORE BOOKING
-            PreparedStatement checkStrike = con.prepareStatement(
-                    "SELECT strikes FROM users WHERE id = ?"
-            );
-            checkStrike.setLong(1, donorId);
-
-            ResultSet rsStrike = checkStrike.executeQuery();
-
-            if (rsStrike.next()) {
-                int strikes = rsStrike.getInt("strikes");
+            DocumentSnapshot donorDoc = db.collection("users").document(donorId).get().get();
+            
+            if (donorDoc.exists()) {
+                Long strikesLong = donorDoc.getLong("strikes");
+                int strikes = strikesLong != null ? strikesLong.intValue() : 0;
 
                 if (strikes >= 3) {
-                    response.getWriter().println("You are suspended due to 3 missed appointments.");
+                    session.setAttribute("bookingError", "Your account is temporarily suspended due to 3 or more missed appointments. Please contact your administrator to restore booking privileges.");
+                    response.sendRedirect(request.getContextPath() + "/BookAppointmentServlet");
                     return;
                 }
             }
 
-            // 🔹 Original booking logic (unchanged)
-            PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO appointments (donor_id, bank_id, appointment_time, status) " +
-                    "VALUES (?, ?, ?, 'PENDING')"
-            );
-
+            // 🔹 Original booking logic (unchanged conceptual flow)
             appointmentTime = appointmentTime.replace("T", " ") + ":00";
 
-            ps.setLong(1, donorId);
-            ps.setInt(2, Integer.parseInt(bankId));
-            ps.setTimestamp(3, Timestamp.valueOf(appointmentTime));
+            Map<String, Object> appointmentData = new HashMap<>();
+            appointmentData.put("donor_id", donorId);
+            appointmentData.put("bank_id", bankId);
+            appointmentData.put("appointment_time", appointmentTime);
+            appointmentData.put("status", "PENDING");
 
-            ps.executeUpdate();
+            db.collection("appointments").add(appointmentData).get();
 
             response.sendRedirect(request.getContextPath() + "/dashboard/donor/home.jsp");
 

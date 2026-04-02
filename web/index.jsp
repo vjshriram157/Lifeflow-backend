@@ -102,8 +102,10 @@
             font-family: 'Inter', sans-serif;
         }
         @media(max-width: 768px) {
-            .brand-text { font-size: 3rem; }
+            .brand-text { font-size: 2.5rem; }
             .action-cards { flex-direction: column; gap: 1rem; }
+            .hero-content { padding: 1rem; }
+            .tagline { font-size: 1rem; }
         }
     </style>
 </head>

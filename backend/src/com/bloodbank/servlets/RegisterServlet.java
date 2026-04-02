@@ -1,7 +1,11 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
 import com.bloodbank.util.PasswordUtil;
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.DocumentReference;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QuerySnapshot;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -9,10 +13,9 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 @WebServlet(name = "RegisterServlet", urlPatterns = {"/RegisterServlet"})
 public class RegisterServlet extends HttpServlet {
@@ -52,53 +55,50 @@ public class RegisterServlet extends HttpServlet {
 
         String passwordHash = PasswordUtil.hashPassword(password);
 
-        try (Connection conn = DBConnectionUtil.getConnection()) {
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
+            if (db == null) {
+                throw new IllegalStateException("Firestore is not initialized.");
+            }
 
             // 🔒 CHECK IF EMAIL ALREADY EXISTS
-            String checkSql = "SELECT id FROM users WHERE email = ?";
-            PreparedStatement checkPs = conn.prepareStatement(checkSql);
-            checkPs.setString(1, email);
-            ResultSet rs = checkPs.executeQuery();
+            ApiFuture<QuerySnapshot> future = db.collection("users").whereEqualTo("email", email).get();
+            QuerySnapshot querySnapshot = future.get();
 
-            if (rs.next()) {
+            if (!querySnapshot.isEmpty()) {
                 request.setAttribute("error", "This email is already registered. Please login.");
                 request.getRequestDispatcher("/register.jsp").forward(request, response);
                 return;
             }
 
             // 📝 INSERT NEW USER (UNVERIFIED EMAIL)
-            String insertSql =
-                    "INSERT INTO users (full_name, email, phone, password_hash, blood_group, role, status, city) " +
-                    "VALUES (?, ?, ?, ?, ?, ?, 'UNVERIFIED', ?)";
+            Map<String, Object> docData = new HashMap<>();
+            docData.put("full_name", fullName);
+            docData.put("email", email);
+            docData.put("phone", phone);
+            docData.put("password_hash", passwordHash);
+            docData.put("blood_group", bloodGroup);
+            docData.put("role", role);
+            docData.put("status", "UNVERIFIED");
+            docData.put("city", city);
 
-            PreparedStatement ps = conn.prepareStatement(insertSql, PreparedStatement.RETURN_GENERATED_KEYS);
-            ps.setString(1, fullName);
-            ps.setString(2, email);
-            ps.setString(3, phone);
-            ps.setString(4, passwordHash);
-            ps.setString(5, bloodGroup);
-            ps.setString(6, role);
-            ps.setString(7, city);
-            ps.executeUpdate();
-            
-            ResultSet generatedKeys = ps.getGeneratedKeys();
-            if (generatedKeys.next()) {
-                long userId = generatedKeys.getLong(1);
-                
-                // Generate 6-digit OTP
-                String otp = String.format("%06d", new java.util.Random().nextInt(999999));
-                
-                // Insert OTP into password_resets (reusing this table for tokens)
-                PreparedStatement psToken = conn.prepareStatement("INSERT INTO password_resets (user_id, token) VALUES (?, ?)");
-                psToken.setLong(1, userId);
-                psToken.setString(2, otp);
-                psToken.executeUpdate();
-                
-                // Dispatch real email
-                com.bloodbank.util.EmailService.sendOtpEmail(email, otp);
-            }
+            ApiFuture<DocumentReference> addedDocRef = db.collection("users").add(docData);
+            String userId = addedDocRef.get().getId();
 
-        } catch (SQLException e) {
+            // Generate 6-digit OTP
+            String otp = String.format("%06d", new java.util.Random().nextInt(999999));
+
+            // Insert OTP into password_resets collection
+            Map<String, Object> tokenData = new HashMap<>();
+            tokenData.put("user_id", userId);
+            tokenData.put("token", otp);
+
+            db.collection("password_resets").add(tokenData).get(); // wait for execution
+
+            // Dispatch real email
+            com.bloodbank.util.EmailService.sendOtpEmail(email, otp);
+
+        } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
             request.setAttribute("error", "Unable to register. Please try again.");
             request.getRequestDispatcher("/register.jsp").forward(request, response);

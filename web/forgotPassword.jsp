@@ -11,7 +11,7 @@
     <style>
         body {
             background: url('<%=request.getContextPath()%>/assets/images/hero-bg.jpg') no-repeat center center/cover;
-            height: 100vh;
+            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -33,6 +33,20 @@
             font-size: 3rem;
             color: var(--primary-crimson);
             margin-bottom: 1rem;
+        }
+        @media (max-width: 576px) {
+            .login-container {
+                padding: 1.5rem;
+            }
+            .card {
+                border-radius: 1rem !important;
+            }
+            .logo-icon {
+                font-size: 2.5rem;
+            }
+            h3.fw-bold {
+                font-size: 1.5rem;
+            }
         }
     </style>
 </head>

@@ -1,6 +1,5 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
-<%@ page import="java.sql.*" %>
-<%@ page import="com.bloodbank.util.DBConnectionUtil" %>
+<%@ page import="com.bloodbank.util.FirebaseConfig,com.google.cloud.firestore.*,com.google.api.core.ApiFuture,java.util.List" %>
 
 <%
     String role = (String) session.getAttribute("role");
@@ -65,29 +64,29 @@
                         </thead>
                         <tbody>
                         <%
-                            Connection conn = null; PreparedStatement ps = null; ResultSet rs = null;
                             try {
-                                conn = DBConnectionUtil.getConnection();
-                                ps = conn.prepareStatement("SELECT id, full_name, blood_group, city FROM users WHERE status='PENDING' AND role='DONOR'");
-                                rs = ps.executeQuery();
+                                Firestore db = FirebaseConfig.getFirestore();
+                                List<QueryDocumentSnapshot> donors = db.collection("users")
+                                    .whereEqualTo("status", "PENDING")
+                                    .whereEqualTo("role", "DONOR").get().get().getDocuments();
                                 boolean hasRows = false;
-                                while (rs.next()) {
+                                for (QueryDocumentSnapshot doc : donors) {
                                     hasRows = true;
                         %>
                                 <tr>
-                                    <td><div class="fw-bold text-dark"><%= rs.getString("full_name") %></div></td>
-                                    <td><span class="badge badge-soft-danger fs-6"><%= rs.getString("blood_group") %></span></td>
-                                    <td class="text-muted"><i class="fa-solid fa-location-dot me-1"></i> <%= rs.getString("city") %></td>
+                                    <td><div class="fw-bold text-dark"><%= doc.getString("full_name") %></div></td>
+                                    <td><span class="badge badge-soft-danger fs-6"><%= doc.getString("blood_group") %></span></td>
+                                    <td class="text-muted"><i class="fa-solid fa-location-dot me-1"></i> <%= doc.getString("city") %></td>
                                     <td class="text-end">
                                         <form method="post" action="<%= request.getContextPath() %>/AdminApprovalServlet" class="d-inline">
                                             <input type="hidden" name="type" value="user">
-                                            <input type="hidden" name="id" value="<%= rs.getLong("id") %>">
+                                            <input type="hidden" name="id" value="<%= doc.getId() %>">
                                             <input type="hidden" name="action" value="approve">
                                             <button class="btn btn-success btn-sm rounded-pill px-3 fw-bold me-2"><i class="fa-solid fa-check me-1"></i> Approve</button>
                                         </form>
                                         <form method="post" action="<%= request.getContextPath() %>/AdminApprovalServlet" class="d-inline">
                                             <input type="hidden" name="type" value="user">
-                                            <input type="hidden" name="id" value="<%= rs.getLong("id") %>">
+                                            <input type="hidden" name="id" value="<%= doc.getId() %>">
                                             <input type="hidden" name="action" value="reject">
                                             <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 fw-bold"><i class="fa-solid fa-xmark me-1"></i> Reject</button>
                                         </form>
@@ -97,7 +96,6 @@
                                 }
                                 if (!hasRows) { out.print("<tr><td colspan='4' class='text-center text-muted py-5'><i class='fa-solid fa-clipboard-check mb-2 fs-2 text-light'></i><br>No pending donors. All caught up!</td></tr>"); }
                             } catch (Exception e) { out.print("<tr><td colspan='4' class='text-danger'>Error: " + e.getMessage() + "</td></tr>"); }
-                            finally { try{if(rs!=null)rs.close();}catch(Exception e){} try{if(ps!=null)ps.close();}catch(Exception e){} try{if(conn!=null)conn.close();}catch(Exception e){} }
                         %>
                         </tbody>
                     </table>
@@ -120,28 +118,28 @@
                         </thead>
                         <tbody>
                         <%
-                            Connection conn2 = null; PreparedStatement ps2 = null; ResultSet rs2 = null;
                             try {
-                                conn2 = DBConnectionUtil.getConnection();
-                                ps2 = conn2.prepareStatement("SELECT id, full_name, city FROM users WHERE status='PENDING' AND role='BANK'");
-                                rs2 = ps2.executeQuery();
+                                Firestore db = FirebaseConfig.getFirestore();
+                                List<QueryDocumentSnapshot> banks = db.collection("users")
+                                    .whereEqualTo("status", "PENDING")
+                                    .whereEqualTo("role", "BANK").get().get().getDocuments();
                                 boolean hasRows2 = false;
-                                while (rs2.next()) {
+                                for (QueryDocumentSnapshot doc : banks) {
                                     hasRows2 = true;
                         %>
                                 <tr>
-                                    <td><div class="fw-bold text-dark"><%= rs2.getString("full_name") %></div></td>
-                                    <td class="text-muted"><i class="fa-solid fa-location-dot me-1"></i> <%= rs2.getString("city") %></td>
+                                    <td><div class="fw-bold text-dark"><%= doc.getString("full_name") %></div></td>
+                                    <td class="text-muted"><i class="fa-solid fa-location-dot me-1"></i> <%= doc.getString("city") %></td>
                                     <td class="text-end">
                                         <form method="post" action="<%= request.getContextPath() %>/AdminApprovalServlet" class="d-inline">
                                             <input type="hidden" name="type" value="user">
-                                            <input type="hidden" name="id" value="<%= rs2.getLong("id") %>">
+                                            <input type="hidden" name="id" value="<%= doc.getId() %>">
                                             <input type="hidden" name="action" value="approve">
                                             <button class="btn btn-success btn-sm rounded-pill px-3 fw-bold me-2"><i class="fa-solid fa-check me-1"></i> Approve</button>
                                         </form>
                                         <form method="post" action="<%= request.getContextPath() %>/AdminApprovalServlet" class="d-inline">
                                             <input type="hidden" name="type" value="user">
-                                            <input type="hidden" name="id" value="<%= rs2.getLong("id") %>">
+                                            <input type="hidden" name="id" value="<%= doc.getId() %>">
                                             <input type="hidden" name="action" value="reject">
                                             <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 fw-bold"><i class="fa-solid fa-xmark me-1"></i> Reject</button>
                                         </form>
@@ -151,7 +149,6 @@
                                 }
                                 if (!hasRows2) { out.print("<tr><td colspan='3' class='text-center text-muted py-5'><i class='fa-solid fa-clipboard-check mb-2 fs-2 text-light'></i><br>No pending blood banks. All caught up!</td></tr>"); }
                             } catch (Exception e) { out.print("<tr><td colspan='3' class='text-danger'>Error: " + e.getMessage() + "</td></tr>"); }
-                            finally { try{if(rs2!=null)rs2.close();}catch(Exception e){} try{if(ps2!=null)ps2.close();}catch(Exception e){} try{if(conn2!=null)conn2.close();}catch(Exception e){} }
                         %>
                         </tbody>
                     </table>

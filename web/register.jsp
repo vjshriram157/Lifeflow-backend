@@ -12,7 +12,6 @@
         body {
             background: url('https://images.unsplash.com/photo-1615461066841-6116e61058f4?auto=format&fit=crop&q=80&w=2000') no-repeat center center;
             background-size: cover;
-            background-attachment: fixed;
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -61,6 +60,20 @@
         .custom-input-group .form-select option {
             background: #0f172a;
             color: white;
+        }
+        @media (max-width: 576px) {
+            .register-container {
+                padding: 1.5rem;
+            }
+            .card {
+                border-radius: 1rem !important;
+            }
+            .brand-text {
+                font-size: 1.5rem !important;
+            }
+            .logo-icon {
+                font-size: 2rem;
+            }
         }
     </style>
 </head>

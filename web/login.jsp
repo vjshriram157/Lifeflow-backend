@@ -55,6 +55,20 @@
         .custom-input-group .form-control::placeholder {
             color: rgba(255, 255, 255, 0.4);
         }
+        @media (max-width: 576px) {
+            .login-container {
+                padding: 1.5rem;
+            }
+            .card {
+                border-radius: 1rem !important;
+            }
+            .brand-text {
+                font-size: 1.5rem !important;
+            }
+            .logo-icon {
+                font-size: 2rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -105,7 +119,10 @@
                     <label class="form-label text-white-50 small fw-bold tracking-wide">PASSWORD</label>
                     <div class="input-group custom-input-group">
                         <span class="input-group-text border-end-0"><i class="fa-solid fa-lock"></i></span>
-                        <input type="password" name="password" class="form-control border-start-0 ps-0" placeholder="••••••••" required>
+                        <input type="password" id="passwordField" name="password" class="form-control border-start-0 border-end-0 ps-0" placeholder="••••••••" required>
+                        <span class="input-group-text border-start-0" id="togglePassword" style="cursor: pointer;">
+                            <i class="fa-regular fa-eye text-white-50" id="toggleIcon"></i>
+                        </span>
                     </div>
                 </div>
                 
@@ -131,5 +148,24 @@
     </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const togglePassword = document.getElementById('togglePassword');
+        const passwordField = document.getElementById('passwordField');
+        const toggleIcon = togglePassword.querySelector('i');
+
+        togglePassword.addEventListener('click', function() {
+            if (passwordField.type === 'password') {
+                passwordField.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordField.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        });
+    });
+</script>
 </body>
 </html>

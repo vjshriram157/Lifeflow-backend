@@ -27,15 +27,7 @@
         <url-pattern>/RegisterServlet</url-pattern>
     </servlet-mapping>
 
-    <!-- ================= BOOK APPOINTMENT (NEW) ================= -->
-    <servlet>
-        <servlet-name>BookAppointmentServlet</servlet-name>
-        <servlet-class>com.bloodbank.servlets.BookAppointmentServlet</servlet-class>
-    </servlet>
-    <servlet-mapping>
-        <servlet-name>BookAppointmentServlet</servlet-name>
-        <url-pattern>/BookAppointmentServlet</url-pattern>
-    </servlet-mapping>
+
 
     <!-- ================= ADMIN APPROVAL ================= -->
     <servlet>
