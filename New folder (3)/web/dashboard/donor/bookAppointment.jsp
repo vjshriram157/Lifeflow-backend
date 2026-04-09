@@ -1,7 +1,7 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
 <%@ page import="java.util.List" %>
 <%
-    Long userId = (Long) session.getAttribute("userId");
+    String userId = (String) session.getAttribute("userId");
     String role = (String) session.getAttribute("role");
     if (userId == null || role == null || !"DONOR".equalsIgnoreCase(role)) {
         response.sendRedirect(request.getContextPath() + "/login.jsp");
@@ -56,6 +56,21 @@
                             <h3 class="fw-bold">Schedule Visit</h3>
                         </div>
 
+                        <%
+                            String bookingError = (String) request.getAttribute("bookingError");
+                            if (bookingError != null) {
+                        %>
+                            <div class="alert alert-danger shadow-sm border-0 d-flex align-items-center mb-5 fade-in-up" role="alert" style="background: rgba(225, 29, 72, 0.05); color: #e11d48; border-left: 4px solid #e11d48 !important;">
+                                <i class="fa-solid fa-circle-exclamation fs-4 me-3"></i>
+                                <div>
+                                    <h6 class="fw-bold mb-1">Action Denied</h6>
+                                    <span style="font-size: 0.9rem;"><%= bookingError %></span>
+                                </div>
+                            </div>
+                        <%
+                            }
+                        %>
+
                         <form action="<%= request.getContextPath() %>/BookAppointmentServlet" method="post">
                             <div class="mb-4">
                                 <label class="form-label fw-bold"><i class="fa-solid fa-hospital-user text-danger me-2"></i> Select Partnering Facility</label>
@@ -64,11 +79,13 @@
                                     <select name="bankId" class="form-select form-control-modern bg-light border-0 py-3" required>
                                         <option value="">Select an Approved Blood Bank</option>
                                         <%
+                                            String prefillBankId = (String) request.getAttribute("prefillBankId");
                                             List<String[]> banks = (List<String[]>) request.getAttribute("banks");
                                             if (banks != null && !banks.isEmpty()) {
                                                 for (String[] bank : banks) {
+                                                    String selectedStr = (prefillBankId != null && prefillBankId.equals(bank[0])) ? "selected" : "";
                                         %>
-                                                    <option value="<%= bank[0] %>"><%= bank[1] %></option>
+                                                    <option value="<%= bank[0] %>" <%= selectedStr %>><%= bank[1] %></option>
                                         <%
                                                 }
                                             } else {

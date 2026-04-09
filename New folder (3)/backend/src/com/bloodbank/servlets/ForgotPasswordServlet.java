@@ -1,7 +1,11 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
 import com.bloodbank.util.EmailService;
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -9,10 +13,11 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
 
 @WebServlet("/ForgotPasswordServlet")
 public class ForgotPasswordServlet extends HttpServlet {
@@ -27,27 +32,28 @@ public class ForgotPasswordServlet extends HttpServlet {
             return;
         }
 
-        try (Connection conn = DBConnectionUtil.getConnection()) {
-            PreparedStatement psUser = conn.prepareStatement("SELECT id FROM users WHERE email = ?");
-            psUser.setString(1, email);
-            ResultSet rsUser = psUser.executeQuery();
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
+            ApiFuture<QuerySnapshot> futureUser = db.collection("users").whereEqualTo("email", email).get();
+            List<QueryDocumentSnapshot> users = futureUser.get().getDocuments();
             
-            if (rsUser.next()) {
-                long userId = rsUser.getLong("id");
+            if (!users.isEmpty()) {
+                String userId = users.get(0).getId();
                 
                 // Generate 6-digit OTP
                 String otp = String.format("%06d", new Random().nextInt(999999));
                 
-                // Clear existing tokens
-                PreparedStatement psDelete = conn.prepareStatement("DELETE FROM password_resets WHERE user_id = ?");
-                psDelete.setLong(1, userId);
-                psDelete.executeUpdate();
+                // Clear existing tokens for this user
+                ApiFuture<QuerySnapshot> tokensFuture = db.collection("password_resets").whereEqualTo("user_id", userId).get();
+                for (QueryDocumentSnapshot doc : tokensFuture.get().getDocuments()) {
+                    db.collection("password_resets").document(doc.getId()).delete().get();
+                }
                 
                 // Insert new OTP
-                PreparedStatement psInsert = conn.prepareStatement("INSERT INTO password_resets (user_id, token) VALUES (?, ?)");
-                psInsert.setLong(1, userId);
-                psInsert.setString(2, otp);
-                psInsert.executeUpdate();
+                Map<String, Object> tokenData = new HashMap<>();
+                tokenData.put("user_id", userId);
+                tokenData.put("token", otp);
+                db.collection("password_resets").add(tokenData).get();
                 
                 // Dispatch real email
                 EmailService.sendOtpEmail(email, otp);
@@ -61,7 +67,7 @@ public class ForgotPasswordServlet extends HttpServlet {
                 return;
             }
             
-        } catch (Exception e) {
+        } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
             request.setAttribute("error", "An error occurred while processing your request.");
             request.getRequestDispatcher("/forgotPassword.jsp").forward(request, response);

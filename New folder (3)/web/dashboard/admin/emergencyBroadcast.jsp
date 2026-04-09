@@ -1,5 +1,5 @@
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
-<%@ page import="java.sql.*, com.bloodbank.util.DBConnectionUtil" %>
+<%@ page import="com.bloodbank.util.FirebaseConfig,com.google.cloud.firestore.*,com.google.api.core.ApiFuture,java.util.List" %>
 <%
     String role = (String) session.getAttribute("role");
     if (role == null || !"ADMIN".equalsIgnoreCase(role)) {
@@ -65,44 +65,52 @@
                         </thead>
                         <tbody>
 
-<%
+                        <%
     boolean any = false;
     try {
-        Connection conn = DBConnectionUtil.getConnection();
-        PreparedStatement ps = conn.prepareStatement(
-            "SELECT b.id AS bank_id, b.bank_name, b.city, " +
-            "s.blood_group, s.units AS units, 5 AS safety_stock " +
-            "FROM blood_banks b " +
-            "JOIN blood_stock s ON s.blood_bank_id = b.id " +
-            "WHERE b.status='APPROVED' AND s.units < 5"
-        );
-        ResultSet rs = ps.executeQuery();
-        while (rs.next()) {
+        Firestore db = FirebaseConfig.getFirestore();
+        // Fetch all stock that has units < 5
+        ApiFuture<QuerySnapshot> stockFuture = db.collection("blood_stock").whereLessThan("units", 5L).get();
+        List<QueryDocumentSnapshot> lowStockDocs = stockFuture.get().getDocuments();
+
+        for (QueryDocumentSnapshot sDoc : lowStockDocs) {
+            String bankId = sDoc.getString("blood_bank_id");
+            if (bankId == null) continue;
+
+            DocumentSnapshot bankDoc = db.collection("blood_banks").document(bankId).get().get();
+            if (!bankDoc.exists() || !"APPROVED".equalsIgnoreCase(bankDoc.getString("status"))) {
+                continue;
+            }
+
             any = true;
+            String bankName = bankDoc.getString("bank_name");
+            String city = bankDoc.getString("city");
+            String bloodGroup = sDoc.getString("blood_group");
+            Long units = sDoc.getLong("units");
+            long safetyStock = 5;
 %>
                             <tr>
                                 <td>
-                                    <div class="fw-bold text-dark"><%= rs.getString("bank_name") %></div>
+                                    <div class="fw-bold text-dark"><%= bankName != null ? bankName : "Unknown Bank" %></div>
                                 </td>
-                                <td class="text-muted"><i class="fa-solid fa-location-dot me-1 text-danger"></i> <%= rs.getString("city") %></td>
+                                <td class="text-muted"><i class="fa-solid fa-location-dot me-1 text-danger"></i> <%= city != null ? city : "N/A" %></td>
                                 <td>
-                                    <span class="badge bg-danger rounded-pill px-3 fs-6 shadow-sm"><i class="fa-solid fa-droplet me-1"></i> <%= rs.getString("blood_group") %></span>
+                                    <span class="badge bg-danger rounded-pill px-3 fs-6 shadow-sm"><i class="fa-solid fa-droplet me-1"></i> <%= bloodGroup %></span>
                                 </td>
                                 <td>
                                     <h5 class="fw-bold mb-0 text-dark">
-                                        <%= rs.getInt("units") %> <span class="text-muted fs-6 fw-normal">/ <%= rs.getInt("safety_stock") %> Required</span>
+                                        <%= units != null ? units : 0 %> <span class="text-muted fs-6 fw-normal">/ <%= safetyStock %> Required</span>
                                     </h5>
                                 </td>
                                 <td class="text-end">
                                     <button class="btn btn-premium btn-sm rounded-pill px-4 fw-bold shadow-sm"
-                                            onclick="sendBroadcast('<%= rs.getString("bank_name") %>', '<%= rs.getString("blood_group") %>')">
+                                            onclick="sendBroadcast('<%= bankId %>', '<%= bankName != null ? bankName.replace("'", "\\'") : "" %>', '<%= bloodGroup != null ? bloodGroup : "" %>')">
                                         <i class="fa-solid fa-podcast me-1"></i> Dispatch Request
                                     </button>
                                 </td>
                             </tr>
 <%
         }
-        rs.close(); ps.close(); conn.close();
     } catch (Exception e) {
         out.print("<tr><td colspan='5' class='text-danger text-center py-5'><strong>Error loading critical data:</strong> " + e.getMessage() + "</td></tr>");
     }
@@ -128,12 +136,42 @@
 </div>
 
 <script>
-    function sendBroadcast(bankName, bloodGroup) {
-        alert(
-            "Emergency Action Activated!\n\n" +
-            "Broadcasting a high-priority push notification for " + bloodGroup + " donors near " + bankName + ".\n" +
-            "The LifeFlow network is dispatching notifications now."
-        );
+    function sendBroadcast(bankId, bankName, bloodGroup) {
+        if (!confirm("Dispatch high-priority push notification for " + bloodGroup + " donors near " + bankName + "?")) {
+            return;
+        }
+
+        const btn = event.currentTarget;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Dispatching...';
+        btn.disabled = true;
+
+        const formData = new URLSearchParams();
+        formData.append("bankId", bankId);
+        formData.append("bloodGroup", bloodGroup);
+        formData.append("radiusKm", "10");
+
+        fetch("<%= request.getContextPath() %>/api/emergency-broadcast", {
+            method: "POST",
+            body: formData,
+            headers: { "Content-Type": "application/x-www-form-urlencoded" }
+        })
+        .then(response => response.json().then(data => ({ status: response.status, body: data })))
+        .then(res => {
+            if (res.status === 200) {
+                alert("Success!\nAlert ID: " + res.body.alertId + "\nDonors Notified: " + res.body.notifiedCount);
+            } else {
+                alert("Error: " + (res.body.error || "Failed to dispatch request"));
+            }
+        })
+        .catch(err => {
+            alert("Network error: Could not connect to dispatch server.");
+            console.error(err);
+        })
+        .finally(() => {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+        });
     }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>

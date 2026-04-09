@@ -1,6 +1,8 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.Firestore;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
@@ -17,10 +19,8 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.net.URLEncoder;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
 
 @WebServlet(name = "AdminApprovalServlet", urlPatterns = {"/AdminApprovalServlet"})
 public class AdminApprovalServlet extends HttpServlet {
@@ -37,80 +37,54 @@ public class AdminApprovalServlet extends HttpServlet {
         }
 
         String action = request.getParameter("action"); // approve | reject
-        String idParam = request.getParameter("id");
+        String userId = request.getParameter("id");
 
-        if (action == null || idParam == null) {
+        if (action == null || userId == null || userId.isEmpty()) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing parameters");
-            return;
-        }
-
-        long userId;
-        try {
-            userId = Long.parseLong(idParam);
-        } catch (NumberFormatException e) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid ID");
             return;
         }
 
         String newStatus = "approve".equalsIgnoreCase(action) ? "APPROVED" : "REJECTED";
 
-        try (Connection conn = DBConnectionUtil.getConnection()) {
-            conn.setAutoCommit(false);
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
 
-            try {
-                // 1️⃣ Update user status
-                PreparedStatement psUpdateUser =
-                        conn.prepareStatement("UPDATE users SET status = ? WHERE id = ?");
-                psUpdateUser.setString(1, newStatus);
-                psUpdateUser.setLong(2, userId);
-                psUpdateUser.executeUpdate();
+            // 1️⃣ Update user status
+            db.collection("users").document(userId).update("status", newStatus).get();
 
-                // 2️⃣ If approved BANK user → create blood bank
-                if ("APPROVED".equalsIgnoreCase(newStatus)) {
+            // 2️⃣ If approved BANK user → create blood bank
+            if ("APPROVED".equalsIgnoreCase(newStatus)) {
+                DocumentSnapshot userDoc = db.collection("users").document(userId).get().get();
 
-                    PreparedStatement psFetch =
-                            conn.prepareStatement(
-                                    "SELECT full_name, role, email, phone, city FROM users WHERE id = ?");
-                    psFetch.setLong(1, userId);
-                    ResultSet rs = psFetch.executeQuery();
+                if (userDoc.exists()) {
+                    String role = userDoc.getString("role");
 
-                    if (rs.next()) {
-                        String role = rs.getString("role");
+                    if ("BANK".equalsIgnoreCase(role)) {
+                        String city = userDoc.getString("city");
+                        String fullName = userDoc.getString("full_name");
+                        String email = userDoc.getString("email");
+                        String phone = userDoc.getString("phone");
 
-                        if ("BANK".equalsIgnoreCase(role)) {
-                            String city = rs.getString("city");
+                        // 🌍 Auto-geocode bank city
+                        double[] coords = geocodeAddress(city);
 
-                            // 🌍 Auto-geocode bank city
-                            double[] coords = geocodeAddress(city);
+                        double latitude = coords != null ? coords[0] : 0.0;
+                        double longitude = coords != null ? coords[1] : 0.0;
 
-                            double latitude = coords != null ? coords[0] : 0.0;
-                            double longitude = coords != null ? coords[1] : 0.0;
-
-                            PreparedStatement psBank =
-                                    conn.prepareStatement(
-                                            "INSERT INTO blood_banks " +
-                                            "(bank_name, email, phone, city, status, latitude, longitude) " +
-                                            "VALUES (?, ?, ?, ?, 'APPROVED', ?, ?)");
-
-                            psBank.setString(1, rs.getString("full_name"));
-                            psBank.setString(2, rs.getString("email"));
-                            psBank.setString(3, rs.getString("phone"));
-                            psBank.setString(4, city);
-                            psBank.setDouble(5, latitude);
-                            psBank.setDouble(6, longitude);
-
-                            psBank.executeUpdate();
+                        Map<String, Object> bankData = new HashMap<>();
+                        bankData.put("bank_name", fullName);
+                        bankData.put("email", email);
+                        bankData.put("phone", phone);
+                        bankData.put("city", city);
+                        bankData.put("status", "APPROVED");
+                        if (coords != null) {
+                            bankData.put("latitude", latitude);
+                            bankData.put("longitude", longitude);
                         }
+
+                        db.collection("blood_banks").add(bankData).get();
                     }
                 }
-
-                conn.commit();
-
-            } catch (Exception ex) {
-                conn.rollback();
-                throw ex;
-            } finally {
-                conn.setAutoCommit(true);
             }
 
         } catch (Exception e) {
@@ -127,6 +101,7 @@ public class AdminApprovalServlet extends HttpServlet {
 
     // 🌍 Geocode city using OpenStreetMap (Nominatim)
     private double[] geocodeAddress(String query) {
+        if (query == null || query.trim().isEmpty()) return null;
         try {
             String url =
                     "https://nominatim.openstreetmap.org/search?q=" +

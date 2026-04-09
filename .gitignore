@@ -1,0 +1,4 @@
+# Ignore Firebase service account key
+New folder (3)/backend/*.json
+# Ignore migration logs
+New folder (3)/backend/migration_log.txt

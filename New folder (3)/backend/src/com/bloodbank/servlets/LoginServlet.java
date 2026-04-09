@@ -1,7 +1,11 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
 import com.bloodbank.util.PasswordUtil;
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -10,10 +14,8 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 @WebServlet(name = "LoginServlet", urlPatterns = {"/LoginServlet"})
 public class LoginServlet extends HttpServlet {
@@ -24,7 +26,6 @@ public class LoginServlet extends HttpServlet {
 
         request.setCharacterEncoding("UTF-8");
 
-        // Trim inputs to avoid whitespace issues
         String email = request.getParameter("email");
         String password = request.getParameter("password");
 
@@ -36,26 +37,29 @@ public class LoginServlet extends HttpServlet {
             return;
         }
 
-        try (Connection conn = DBConnectionUtil.getConnection()) {
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
+            if (db == null) {
+                throw new IllegalStateException("Firestore is not initialized.");
+            }
 
-            String sql = "SELECT id, full_name, password_hash, role, status " +
-                         "FROM users WHERE email = ?";
-            PreparedStatement ps = conn.prepareStatement(sql);
-            ps.setString(1, email);
+            ApiFuture<QuerySnapshot> future = db.collection("users").whereEqualTo("email", email).get();
+            List<QueryDocumentSnapshot> documents = future.get().getDocuments();
 
-            ResultSet rs = ps.executeQuery();
-
-            if (!rs.next()) {
+            if (documents.isEmpty()) {
                 request.setAttribute("error", "Invalid email or password.");
                 request.getRequestDispatcher("/login.jsp").forward(request, response);
                 return;
             }
 
-            long userId = rs.getLong("id");
-            String fullName = rs.getString("full_name");
-            String passwordHash = rs.getString("password_hash");
-            String role = rs.getString("role");
-            String status = rs.getString("status");
+            QueryDocumentSnapshot document = documents.get(0);
+
+            // Document ID is used as the unique user ID in Firestore
+            String userId = document.getId();
+            String fullName = document.getString("full_name");
+            String passwordHash = document.getString("password_hash");
+            String role = document.getString("role");
+            String status = document.getString("status");
 
             // Verify password
             if (!PasswordUtil.verifyPassword(password, passwordHash)) {
@@ -66,10 +70,7 @@ public class LoginServlet extends HttpServlet {
 
             // Check approval status
             if (!"APPROVED".equalsIgnoreCase(status)) {
-                request.setAttribute(
-                        "error",
-                        "Your account is pending approval. Please try again later."
-                );
+                request.setAttribute("error", "Your account is pending approval. Please try again later.");
                 request.getRequestDispatcher("/login.jsp").forward(request, response);
                 return;
             }
@@ -96,10 +97,10 @@ public class LoginServlet extends HttpServlet {
                 response.sendRedirect(ctx + "/dashboard/donor/home.jsp");
             }
 
-        } catch (SQLException e) {
-    e.printStackTrace();   // 👈 ADD THIS LINE
-    request.setAttribute("error", "DB Error: " + e.getMessage());
-    request.getRequestDispatcher("/login.jsp").forward(request, response);
-}
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+            request.setAttribute("error", "DB Error: " + e.getMessage());
+            request.getRequestDispatcher("/login.jsp").forward(request, response);
+        }
     }
 }

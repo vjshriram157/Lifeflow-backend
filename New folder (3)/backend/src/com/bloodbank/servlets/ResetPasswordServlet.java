@@ -1,6 +1,11 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
+import com.bloodbank.util.PasswordUtil;
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -8,9 +13,8 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 @WebServlet("/ResetPasswordServlet")
 public class ResetPasswordServlet extends HttpServlet {
@@ -34,31 +38,35 @@ public class ResetPasswordServlet extends HttpServlet {
             return;
         }
 
-        try (Connection conn = DBConnectionUtil.getConnection()) {
-            // Find user id and token matching
-            PreparedStatement psFind = conn.prepareStatement(
-                "SELECT pr.user_id FROM password_resets pr " +
-                "JOIN users u ON pr.user_id = u.id " +
-                "WHERE pr.token = ? AND u.email = ?"
-            );
-            psFind.setString(1, otp);
-            psFind.setString(2, email);
-            ResultSet rs = psFind.executeQuery();
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
             
-            if (rs.next()) {
-                long userId = rs.getLong("user_id");
-                
-                // Update user password
-                PreparedStatement psUpdate = conn.prepareStatement("UPDATE users SET password = ? WHERE id = ?");
-                psUpdate.setString(1, newPassword);
-                psUpdate.setLong(2, userId);
-                psUpdate.executeUpdate();
+            // Find User by email
+            ApiFuture<QuerySnapshot> userFuture = db.collection("users").whereEqualTo("email", email).get();
+            List<QueryDocumentSnapshot> users = userFuture.get().getDocuments();
+
+            if (users.isEmpty()) {
+                request.setAttribute("error", "Invalid or expired OTP.");
+                request.getRequestDispatcher("/verifyOtp.jsp?email=" + email).forward(request, response);
+                return;
+            }
+
+            String userId = users.get(0).getId();
+
+            // Find matching OTP
+            ApiFuture<QuerySnapshot> tokenFuture = db.collection("password_resets")
+                    .whereEqualTo("user_id", userId)
+                    .whereEqualTo("token", otp)
+                    .get();
+            List<QueryDocumentSnapshot> tokens = tokenFuture.get().getDocuments();
+            
+            if (!tokens.isEmpty()) {
+                // Update user password hash
+                String passwordHash = PasswordUtil.hashPassword(newPassword);
+                db.collection("users").document(userId).update("password_hash", passwordHash).get();
                 
                 // Delete used OTP
-                PreparedStatement psDelete = conn.prepareStatement("DELETE FROM password_resets WHERE token = ? AND user_id = ?");
-                psDelete.setString(1, otp);
-                psDelete.setLong(2, userId);
-                psDelete.executeUpdate();
+                db.collection("password_resets").document(tokens.get(0).getId()).delete().get();
                 
                 // Redirect back to login with success message
                 response.sendRedirect(request.getContextPath() + "/login.jsp?resetSuccess=true");
@@ -67,7 +75,7 @@ public class ResetPasswordServlet extends HttpServlet {
                 request.getRequestDispatcher("/verifyOtp.jsp?email=" + email).forward(request, response);
             }
             
-        } catch (Exception e) {
+        } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
             request.setAttribute("error", "An error occurred. Please try again later.");
             request.getRequestDispatcher("/verifyOtp.jsp?email=" + email).forward(request, response);

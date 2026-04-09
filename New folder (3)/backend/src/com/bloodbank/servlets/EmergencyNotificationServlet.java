@@ -1,7 +1,12 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
 import com.bloodbank.util.FcmClient;
+import com.google.cloud.firestore.DocumentReference;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import com.google.cloud.firestore.QuerySnapshot;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -12,10 +17,12 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @WebServlet(name = "EmergencyNotificationServlet", urlPatterns = {"/api/emergency-broadcast"})
 public class EmergencyNotificationServlet extends HttpServlet {
@@ -34,113 +41,125 @@ public class EmergencyNotificationServlet extends HttpServlet {
         JSONObject result = new JSONObject();
 
         try (PrintWriter out = response.getWriter()) {
-            if (bankIdParam == null || bloodGroup == null || bloodGroup.isEmpty()) {
+            if (bankIdParam == null || bankIdParam.trim().isEmpty() || bloodGroup == null || bloodGroup.isEmpty()) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 result.put("error", "bankId and bloodGroup are required");
                 out.print(result.toString());
                 return;
             }
 
-            long bankId = Long.parseLong(bankIdParam);
             double radiusKm = radiusParam != null ? Double.parseDouble(radiusParam) : 10.0;
 
-            try (Connection conn = DBConnectionUtil.getConnection()) {
-                conn.setAutoCommit(false);
+            try {
+                Firestore db = FirebaseConfig.getFirestore();
 
                 // 1) Lookup bank coordinates
-                double bankLat = 0;
-                double bankLng = 0;
-                PreparedStatement psBank = conn.prepareStatement(
-                        "SELECT latitude, longitude FROM blood_banks WHERE id = ? AND status = 'APPROVED'");
-                psBank.setLong(1, bankId);
-                ResultSet rsBank = psBank.executeQuery();
-                if (!rsBank.next()) {
+                DocumentSnapshot bankDoc = db.collection("blood_banks").document(bankIdParam).get().get();
+                if (!bankDoc.exists() || !"APPROVED".equals(bankDoc.getString("status"))) {
                     response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                     result.put("error", "Invalid or unapproved blood bank");
                     out.print(result.toString());
-                    conn.rollback();
                     return;
                 }
-                bankLat = rsBank.getDouble("latitude");
-                bankLng = rsBank.getDouble("longitude");
+                
+                Double bankLatObj = bankDoc.getDouble("latitude");
+                Double bankLngObj = bankDoc.getDouble("longitude");
+                double bankLat = bankLatObj != null ? bankLatObj : 0;
+                double bankLng = bankLngObj != null ? bankLngObj : 0;
 
                 // 2) Insert alert record
-                PreparedStatement psAlert = conn.prepareStatement(
-                        "INSERT INTO emergency_alerts (bank_id, blood_group, radius_km, message) VALUES (?, ?, ?, ?)",
-                        PreparedStatement.RETURN_GENERATED_KEYS);
-                psAlert.setLong(1, bankId);
-                psAlert.setString(2, bloodGroup);
-                psAlert.setDouble(3, radiusKm);
-                psAlert.setString(4, message != null ? message : "Urgent need for " + bloodGroup + " blood");
-                psAlert.executeUpdate();
+                Map<String, Object> alertData = new HashMap<>();
+                alertData.put("bank_id", bankIdParam);
+                alertData.put("blood_group", bloodGroup);
+                alertData.put("radius_km", radiusKm);
+                alertData.put("message", message != null ? message : "Urgent need for " + bloodGroup + " blood");
+                alertData.put("created_at", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+                
+                DocumentReference alertRef = db.collection("emergency_alerts").document();
+                alertRef.set(alertData).get();
+                String alertId = alertRef.getId();
 
-                long alertId = 0;
-                ResultSet alertKeys = psAlert.getGeneratedKeys();
-                if (alertKeys.next()) {
-                    alertId = alertKeys.getLong(1);
-                }
-
-                // 3) Find eligible donors by blood group and radius using last known location
-                StringBuilder sql = new StringBuilder();
-                sql.append("SELECT d.user_id, d.device_token, d.platform, ");
-                sql.append("( 6371 * ACOS( ");
-                sql.append("COS(RADIANS(?)) * COS(RADIANS(d.last_latitude)) * ");
-                sql.append("COS(RADIANS(d.last_longitude) - RADIANS(?)) + ");
-                sql.append("SIN(RADIANS(?)) * SIN(RADIANS(d.last_latitude)) ");
-                sql.append(") ) AS distance_km ");
-                sql.append("FROM device_tokens d ");
-                sql.append("JOIN users u ON u.id = d.user_id ");
-                sql.append("WHERE u.blood_group = ? ");
-                sql.append("AND u.status = 'APPROVED' ");
-                sql.append("AND ( ");
-                sql.append("SELECT COUNT(1) FROM appointments a ");
-                sql.append("WHERE a.donor_id = u.id ");
-                sql.append("AND a.status = 'COMPLETED' ");
-                sql.append("AND a.appointment_time >= DATE_SUB(NOW(), INTERVAL 3 MONTH) ");
-                sql.append(") = 0 ");
-                sql.append("HAVING distance_km <= ? ");
-
-                PreparedStatement psDonors = conn.prepareStatement(sql.toString());
-                int idx = 1;
-                psDonors.setDouble(idx++, bankLat);
-                psDonors.setDouble(idx++, bankLng);
-                psDonors.setDouble(idx++, bankLat);
-                psDonors.setString(idx++, bloodGroup);
-                psDonors.setDouble(idx, radiusKm);
-
-                ResultSet rsDonors = psDonors.executeQuery();
+                // 3) Find eligible donors
+                QuerySnapshot usersSnapshot = db.collection("users")
+                        .whereEqualTo("blood_group", bloodGroup)
+                        .whereEqualTo("status", "APPROVED")
+                        .get().get();
 
                 JSONArray notifiedDevices = new JSONArray();
-                java.util.List<String> fcmTokens = new java.util.ArrayList<>();
+                List<String> fcmTokens = new ArrayList<>();
+                LocalDateTime threeMonthsAgo = LocalDateTime.now().minusMonths(3);
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-                while (rsDonors.next()) {
-                    JSONObject dev = new JSONObject();
-                    dev.put("userId", rsDonors.getLong("user_id"));
-                    dev.put("deviceToken", rsDonors.getString("device_token"));
-                    String token = rsDonors.getString("device_token");
-                    dev.put("platform", rsDonors.getString("platform"));
-                    dev.put("distanceKm", rsDonors.getDouble("distance_km"));
-                    notifiedDevices.put(dev);
-                    if (token != null && !token.isEmpty()) {
-                        fcmTokens.add(token);
+                for (QueryDocumentSnapshot userDoc : usersSnapshot.getDocuments()) {
+                    String userId = userDoc.getId();
+
+                    // Check device token
+                    DocumentSnapshot tokenDoc = db.collection("device_tokens").document(userId).get().get();
+                    if (!tokenDoc.exists()) continue;
+
+                    Double devLat = tokenDoc.getDouble("last_latitude");
+                    Double devLng = tokenDoc.getDouble("last_longitude");
+                    if (devLat == null || devLng == null) continue;
+
+                    // Calculate Haversine distance
+                    double dLat = Math.toRadians(devLat - bankLat);
+                    double dLng = Math.toRadians(devLng - bankLng);
+                    double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                            Math.cos(Math.toRadians(bankLat)) * Math.cos(Math.toRadians(devLat)) *
+                            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                    double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    double distanceKm = 6371 * c;
+
+                    if (distanceKm <= radiusKm) {
+                        // Check appointments
+                        QuerySnapshot apptSnapshot = db.collection("appointments")
+                                .whereEqualTo("donor_id", userId)
+                                .whereEqualTo("status", "COMPLETED")
+                                .get().get();
+                        
+                        boolean hasRecent = false;
+                        for (QueryDocumentSnapshot appt : apptSnapshot.getDocuments()) {
+                            String timeStr = appt.getString("appointment_time");
+                            if (timeStr != null && !timeStr.isEmpty()) {
+                                try {
+                                    LocalDateTime apptTime = LocalDateTime.parse(timeStr, formatter);
+                                    if (apptTime.isAfter(threeMonthsAgo)) {
+                                        hasRecent = true;
+                                        break;
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        if (!hasRecent) {
+                            String token = tokenDoc.getString("device_token");
+                            if (token != null && !token.isEmpty()) {
+                                JSONObject dev = new JSONObject();
+                                dev.put("userId", userId);
+                                dev.put("deviceToken", token);
+                                dev.put("platform", tokenDoc.getString("platform"));
+                                dev.put("distanceKm", distanceKm);
+                                notifiedDevices.put(dev);
+                                fcmTokens.add(token);
+                            }
+                        }
                     }
                 }
 
-                // 4) Push high-priority emergency notifications via FCM (best-effort, non-blocking for DB commit)
+                // 4) Push notification
                 String title = "Emergency need for " + bloodGroup + " blood";
                 String bodyText = message != null && !message.isEmpty()
                         ? message
                         : "Nearby blood bank requires " + bloodGroup + " donors urgently.";
+                        
                 FcmClient.sendEmergencyAlertToDevices(
                         fcmTokens,
                         title,
                         bodyText,
-                        String.valueOf(alertId),
-                        String.valueOf(bankId),
+                        alertId,
+                        bankIdParam,
                         bloodGroup
                 );
-
-                conn.commit();
 
                 result.put("alertId", alertId);
                 result.put("notifiedCount", notifiedDevices.length());
@@ -148,15 +167,20 @@ public class EmergencyNotificationServlet extends HttpServlet {
                 result.put("status", "QUEUED");
                 response.setStatus(HttpServletResponse.SC_OK);
                 out.print(result.toString());
-            } catch (SQLException e) {
+
+            } catch (Exception e) {
                 response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                 result.put("error", "Database error: " + e.getMessage());
-                response.getWriter().print(result.toString());
+                try {
+                    response.getWriter().print(result.toString());
+                } catch (IOException ignored) {}
             }
         } catch (NumberFormatException e) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             result.put("error", "Invalid numeric parameter");
-            response.getWriter().print(result.toString());
+            try {
+                response.getWriter().print(result.toString());
+            } catch (IOException ignored) {}
         }
     }
 }

@@ -1,7 +1,7 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
-<%@ page import="java.sql.*,com.bloodbank.util.DBConnectionUtil" %>
+<%@ page import="com.bloodbank.util.FirebaseConfig,com.google.cloud.firestore.*,com.google.api.core.ApiFuture,java.util.List" %>
 <%
-    Long userId = (Long) session.getAttribute("userId");
+    String userId = (String) session.getAttribute("userId");
     String role = (String) session.getAttribute("role");
     if (userId == null || role == null || !"DONOR".equalsIgnoreCase(role)) {
         response.sendRedirect(request.getContextPath() + "/login.jsp");
@@ -47,7 +47,93 @@
             </a>
         </div>
 
-        <div class="card card-modern fade-in-up delay-100 mb-4">
+        <div class="card card-modern border-warning border-2 fade-in-up delay-100 mb-4 bg-light">
+            <div class="card-body p-4 p-md-5">
+                <h4 class="fw-bold mb-4 text-warning-emphasis"><i class="fa-solid fa-bell text-warning me-2"></i> Critical Blood Demands Near You</h4>
+                
+                <div class="row g-3">
+<%
+    boolean anyAlerts = false;
+    try {
+        Firestore db = FirebaseConfig.getFirestore();
+        
+        // 1. Get Donor's Blood Group
+        DocumentSnapshot userDoc = db.collection("users").document(userId).get().get();
+        String myBloodGroup = userDoc.getString("blood_group");
+        
+        if (myBloodGroup != null && !myBloodGroup.isEmpty()) {
+            // 2. Fetch Active Emergency Alerts for this blood group
+            ApiFuture<QuerySnapshot> alertFuture = db.collection("emergency_alerts")
+                    .whereEqualTo("blood_group", myBloodGroup).get();
+            List<QueryDocumentSnapshot> alerts = new java.util.ArrayList<QueryDocumentSnapshot>(alertFuture.get().getDocuments());
+            
+            // Sort by time descending
+            java.util.Collections.sort(alerts, new java.util.Comparator<QueryDocumentSnapshot>() {
+                public int compare(QueryDocumentSnapshot d1, QueryDocumentSnapshot d2) {
+                    String t1 = d1.getString("created_at");
+                    String t2 = d2.getString("created_at");
+                    if (t1 == null) return 1;
+                    if (t2 == null) return -1;
+                    return t2.compareTo(t1);
+                }
+            });
+
+            for (QueryDocumentSnapshot alert : alerts) {
+                anyAlerts = true;
+                String bankId = alert.getString("bank_id");
+                String msg = alert.getString("message");
+                Double radius = alert.getDouble("radius_km");
+                String time = alert.getString("created_at");
+
+                String bName = "Local Facility";
+                if (bankId != null) {
+                    DocumentSnapshot bDoc = db.collection("blood_banks").document(bankId).get().get();
+                    if (bDoc.exists() && bDoc.getString("bank_name") != null) {
+                        bName = bDoc.getString("bank_name");
+                    }
+                }
+%>
+                    <div class="col-md-6">
+                        <div class="p-3 border rounded bg-white shadow-sm position-relative overflow-hidden">
+                            <div class="position-absolute top-0 start-0 w-100 bg-warning" style="height: 4px;"></div>
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="fw-bold text-dark mb-0"><i class="fa-solid fa-hospital-user text-danger me-1"></i> <%= bName %></h6>
+                                <span class="badge bg-danger rounded-pill"><%= myBloodGroup %> Needed</span>
+                            </div>
+                            <p class="text-muted small mb-2"><i class="fa-solid fa-satellite-dish me-1"></i> <%= radius != null ? radius : 10.0 %>km Alert Radius</p>
+                            <p class="mb-3 fw-medium text-dark"><%= msg != null ? msg : "Urgent requirement dispatched." %></p>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted"><i class="fa-regular fa-clock me-1"></i> <%= time %></small>
+                                <a href="<%= request.getContextPath() %>/BookAppointmentServlet?prefillBankId=<%= bankId %>" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
+                                    Respond Now <i class="fa-solid fa-arrow-right ms-1"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+<%
+            }
+        }
+        if (!anyAlerts) {
+%>
+                    <div class="col-12 text-center py-4">
+                        <div class="d-inline-flex bg-success bg-opacity-10 text-success p-3 rounded-circle mb-3">
+                            <i class="fa-solid fa-check fs-2"></i>
+                        </div>
+                        <h6 class="text-muted fw-bold">No critical emergencies for <%= myBloodGroup != null ? myBloodGroup : "your blood type" %> in your area right now.</h6>
+                    </div>
+<%
+        }
+    } catch (Exception e) {
+%>
+                    <div class="col-12 text-danger">Failed to load alerts: <%= e.getMessage() %></div>
+<%
+    }
+%>
+                </div>
+            </div>
+        </div>
+
+        <div class="card card-modern fade-in-up delay-200 mb-4">
             <div class="card-body p-4 p-md-5">
                 <h4 class="fw-bold mb-4"><i class="fa-solid fa-clock-rotate-left text-danger me-2"></i> Donation History</h4>
                 
@@ -63,19 +149,43 @@
                         </thead>
                         <tbody>
 <%
-    Connection conn = null; PreparedStatement ps = null; ResultSet rs = null; boolean any = false;
+    boolean any = false;
     try {
-        conn = DBConnectionUtil.getConnection();
-        String sql = "SELECT a.id, a.appointment_time, a.status, u.full_name AS bank_name " +
-                     "FROM appointments a JOIN users u ON u.id = a.bank_id " +
-                     "WHERE a.donor_id = ? ORDER BY a.appointment_time DESC";
-        ps = conn.prepareStatement(sql);
-        ps.setLong(1, userId);
-        rs = ps.executeQuery();
+        Firestore db = FirebaseConfig.getFirestore();
+        ApiFuture<QuerySnapshot> future = db.collection("appointments").whereEqualTo("donor_id", userId).get();
+        List<QueryDocumentSnapshot> docs = new java.util.ArrayList<QueryDocumentSnapshot>(future.get().getDocuments());
 
-        while (rs.next()) {
+        // Sort appointments by time descending
+        java.util.Collections.sort(docs, new java.util.Comparator<QueryDocumentSnapshot>() {
+            public int compare(QueryDocumentSnapshot d1, QueryDocumentSnapshot d2) {
+                String t1 = d1.getString("appointment_time");
+                String t2 = d2.getString("appointment_time");
+                if (t1 == null) return 1;
+                if (t2 == null) return -1;
+                return t2.compareTo(t1);
+            }
+        });
+
+        for (QueryDocumentSnapshot doc : docs) {
             any = true;
-            String st = rs.getString("status");
+            String st = doc.getString("status");
+            String apptTime = doc.getString("appointment_time");
+            String bankId = doc.getString("bank_id");
+            String appId = doc.getId();
+
+            String bankName = "Unknown Bank";
+            if (bankId != null) {
+                DocumentSnapshot bankDoc = db.collection("users").document(bankId).get().get();
+                if (bankDoc.exists() && bankDoc.getString("full_name") != null) {
+                    bankName = bankDoc.getString("full_name");
+                } else {
+                    DocumentSnapshot bankDoc2 = db.collection("blood_banks").document(bankId).get().get();
+                    if (bankDoc2.exists() && bankDoc2.getString("bank_name") != null) {
+                        bankName = bankDoc2.getString("bank_name");
+                    }
+                }
+            }
+
             String badgeClass = "secondary";
             if ("COMPLETED".equalsIgnoreCase(st)) badgeClass = "badge-soft-success";
             else if ("CONFIRMED".equalsIgnoreCase(st)) badgeClass = "badge-soft-primary";
@@ -83,12 +193,12 @@
             else if ("CANCELLED".equalsIgnoreCase(st)) badgeClass = "badge-soft-danger";
 %>
                         <tr>
-                            <td><div class="fw-bold text-dark"><i class="fa-regular fa-calendar me-2 text-muted"></i><%= rs.getTimestamp("appointment_time") %></div></td>
-                            <td class="text-muted"><i class="fa-solid fa-building-user me-1 border p-1 rounded"></i> <%= rs.getString("bank_name") %></td>
-                            <td><span class="badge <%= badgeClass %> px-3 rounded-pill fs-6"><%= st %></span></td>
+                            <td><div class="fw-bold text-dark"><i class="fa-regular fa-calendar me-2 text-muted"></i><%= apptTime != null ? apptTime : "" %></div></td>
+                            <td class="text-muted"><i class="fa-solid fa-building-user me-1 border p-1 rounded"></i> <%= bankName %></td>
+                            <td><span class="badge <%= badgeClass %> px-3 rounded-pill fs-6"><%= st != null ? st : "" %></span></td>
                             <td class="text-center">
                                 <% if ("COMPLETED".equalsIgnoreCase(st)) { %>
-                                <a class="btn btn-sm btn-outline-danger rounded-pill fw-bold" href="<%= request.getContextPath() %>/certificate?appointmentId=<%= rs.getLong("id") %>" target="_blank">
+                                <a class="btn btn-sm btn-outline-danger rounded-pill fw-bold" href="<%= request.getContextPath() %>/certificate?appointmentId=<%= appId %>" target="_blank">
                                     <i class="fa-solid fa-award me-1"></i> Certificate
                                 </a>
                                 <% } else { %>
@@ -100,7 +210,6 @@
         }
         if (!any) { out.print("<tr><td colspan='4' class='text-center text-muted py-5'><i class='fa-solid fa-notes-medical fs-1 text-light mb-3'></i><br>No donation appointments recorded on your profile yet.</td></tr>"); }
     } catch (Exception e) { out.print("<tr><td colspan='4' class='text-danger py-4'>Error loading appointments: " + e.getMessage() + "</td></tr>"); }
-    finally { try{if(rs!=null)rs.close();}catch(Exception e){} try{if(ps!=null)ps.close();}catch(Exception e){} try{if(conn!=null)conn.close();}catch(Exception e){} }
 %>
                         </tbody>
                     </table>

@@ -1,6 +1,8 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
+import com.google.cloud.firestore.DocumentSnapshot;
+import com.google.cloud.firestore.Firestore;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -10,10 +12,6 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 
 @WebServlet(name = "DonationCertificateServlet", urlPatterns = {"/certificate"})
 public class DonationCertificateServlet extends HttpServlet {
@@ -27,19 +25,11 @@ public class DonationCertificateServlet extends HttpServlet {
             response.sendRedirect(request.getContextPath() + "/login.jsp");
             return;
         }
-        long userId = (Long) session.getAttribute("userId");
+        String userId = (String) session.getAttribute("userId");
 
-        String appointmentParam = request.getParameter("appointmentId");
-        if (appointmentParam == null) {
+        String appointmentId = request.getParameter("appointmentId");
+        if (appointmentId == null || appointmentId.isEmpty()) {
             response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing appointmentId");
-            return;
-        }
-
-        long appointmentId;
-        try {
-            appointmentId = Long.parseLong(appointmentParam);
-        } catch (NumberFormatException e) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid appointmentId");
             return;
         }
 
@@ -49,27 +39,33 @@ public class DonationCertificateServlet extends HttpServlet {
         String city = null;
         String completedOn = null;
 
-        try (Connection conn = DBConnectionUtil.getConnection()) {
-            String sql = "SELECT u.full_name, u.blood_group, b.bank_name, b.city, a.appointment_time " +
-                    "FROM appointments a " +
-                    "JOIN users u ON u.id = a.donor_id " +
-                    "JOIN blood_banks b ON b.id = a.bank_id " +
-                    "WHERE a.id = ? AND a.donor_id = ? AND a.status = 'COMPLETED'";
-            PreparedStatement ps = conn.prepareStatement(sql);
-            ps.setLong(1, appointmentId);
-            ps.setLong(2, userId);
-            ResultSet rs = ps.executeQuery();
-            if (!rs.next()) {
+        try {
+            Firestore db = FirebaseConfig.getFirestore();
+            
+            DocumentSnapshot apptDoc = db.collection("appointments").document(appointmentId).get().get();
+            if (!apptDoc.exists() || !userId.equals(apptDoc.getString("donor_id")) || !"COMPLETED".equals(apptDoc.getString("status"))) {
                 response.sendError(HttpServletResponse.SC_NOT_FOUND, "No completed donation found for this appointment.");
                 return;
             }
+            
+            completedOn = apptDoc.getString("appointment_time");
+            String bankId = apptDoc.getString("bank_id");
+            
+            DocumentSnapshot donorDoc = db.collection("users").document(userId).get().get();
+            if (donorDoc.exists()) {
+                donorName = donorDoc.getString("full_name");
+                bloodGroup = donorDoc.getString("blood_group");
+            }
+            
+            if (bankId != null) {
+                DocumentSnapshot bankDoc = db.collection("blood_banks").document(bankId).get().get();
+                if (bankDoc.exists()) {
+                    bankName = bankDoc.getString("bank_name");
+                    city = bankDoc.getString("city");
+                }
+            }
 
-            donorName = rs.getString("full_name");
-            bloodGroup = rs.getString("blood_group");
-            bankName = rs.getString("bank_name");
-            city = rs.getString("city");
-            completedOn = rs.getString("appointment_time");
-        } catch (SQLException e) {
+        } catch (Exception e) {
             response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage());
             return;
         }

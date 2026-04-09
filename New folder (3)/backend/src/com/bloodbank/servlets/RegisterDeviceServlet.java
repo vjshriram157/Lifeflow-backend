@@ -1,6 +1,8 @@
 package com.bloodbank.servlets;
 
-import com.bloodbank.util.DBConnectionUtil;
+import com.bloodbank.util.FirebaseConfig;
+import com.google.cloud.firestore.Firestore;
+import com.google.cloud.firestore.SetOptions;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -9,21 +11,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
 
-/**
- * Registers or updates a mobile device token + last known coordinates for a user.
- *
- * Endpoint: POST /api/register-device
- * Params:
- *   userId      (required, long)
- *   token       (required, string)
- *   platform    (required, ANDROID|IOS)
- *   lat         (optional, double)
- *   lng         (optional, double)
- */
 @WebServlet(name = "RegisterDeviceServlet", urlPatterns = {"/api/register-device"})
 public class RegisterDeviceServlet extends HttpServlet {
 
@@ -49,15 +39,6 @@ public class RegisterDeviceServlet extends HttpServlet {
                 return;
             }
 
-            long userId;
-            try {
-                userId = Long.parseLong(userIdParam);
-            } catch (NumberFormatException e) {
-                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                out.print("{\"error\":\"Invalid userId\"}");
-                return;
-            }
-
             Double lat = null;
             Double lng = null;
             try {
@@ -80,29 +61,20 @@ public class RegisterDeviceServlet extends HttpServlet {
                 return;
             }
 
-            try (Connection conn = DBConnectionUtil.getConnection()) {
-                String sql = "INSERT INTO device_tokens (user_id, device_token, platform, last_latitude, last_longitude) " +
-                        "VALUES (?, ?, ?, ?, ?) " +
-                        "ON DUPLICATE KEY UPDATE device_token = VALUES(device_token), " +
-                        "platform = VALUES(platform), last_latitude = VALUES(last_latitude), " +
-                        "last_longitude = VALUES(last_longitude)";
+            try {
+                Firestore db = FirebaseConfig.getFirestore();
+                
+                Map<String, Object> data = new HashMap<>();
+                data.put("user_id", userIdParam);
+                data.put("device_token", token);
+                data.put("platform", normalizedPlatform);
+                if (lat != null) data.put("last_latitude", lat);
+                if (lng != null) data.put("last_longitude", lng);
 
-                PreparedStatement ps = conn.prepareStatement(sql);
-                ps.setLong(1, userId);
-                ps.setString(2, token);
-                ps.setString(3, normalizedPlatform);
-                if (lat != null) {
-                    ps.setDouble(4, lat);
-                } else {
-                    ps.setNull(4, java.sql.Types.DOUBLE);
-                }
-                if (lng != null) {
-                    ps.setDouble(5, lng);
-                } else {
-                    ps.setNull(5, java.sql.Types.DOUBLE);
-                }
-                ps.executeUpdate();
-            } catch (SQLException e) {
+                // Use userId as the document ID for easy upserts
+                db.collection("device_tokens").document(userIdParam).set(data, SetOptions.merge()).get();
+
+            } catch (Exception e) {
                 response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                 out.print("{\"error\":\"Database error: " + e.getMessage() + "\"}");
                 return;

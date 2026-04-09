@@ -234,8 +234,7 @@
         }
 
         function onBookAppointment(bankId) {
-            alert('To book an appointment at ID ' + bankId + ', please Sign In via the Donor Dashboard.');
-            window.location.href = '<%=request.getContextPath()%>/login.jsp';
+            window.location.href = '<%=request.getContextPath()%>/BookAppointmentServlet?prefillBankId=' + bankId;
         }
 
         async function searchByLocation(lat, lng) {
