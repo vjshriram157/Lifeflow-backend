@@ -109,16 +109,24 @@
                             </div>
 
                             <form id="searchForm" class="row g-3 align-items-end mb-4">
-                                <div class="col-md-5">
-                                    <label for="city" class="form-label">City / Region</label>
+                                <div class="col-md-4">
+                                    <label for="stateSelect" class="form-label">State</label>
                                     <div class="input-group">
-                                        <span class="input-group-text bg-light border-0"><i class="fa-solid fa-city text-muted"></i></span>
-                                        <input type="text" class="form-control form-control-modern bg-light border-0" id="city" placeholder="e.g., Manhattan">
+                                        <span class="input-group-text bg-light border-0"><i class="fa-solid fa-map text-muted"></i></span>
+                                        <select class="form-select form-control-modern bg-light border-0" id="stateSelect">
+                                            <option value="" selected disabled>Select State</option>
+                                        </select>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
-                                    <label for="pincode" class="form-label">Postal Code</label>
-                                    <input type="text" class="form-control form-control-modern bg-light border-0" id="pincode" placeholder="10001">
+                                <div class="col-md-4">
+                                    <label for="city" class="form-label">District</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light border-0"><i class="fa-solid fa-city text-muted"></i></span>
+                                        <select class="form-select form-control-modern bg-light border-0" id="city">
+                                            <option value="" selected disabled>Select District</option>
+                                        </select>
+                                    </div>
+                                    <input type="hidden" id="pincode" value="">
                                 </div>
                                 <div class="col-md-4">
                                     <label for="bloodGroup" class="form-label">Blood Group</label>
@@ -326,6 +334,71 @@
                 </td>
             </tr>`;
         }
+
+        // Auto-search if parameters are passed from home page
+        document.addEventListener('DOMContentLoaded', async () => {
+            const params = new URLSearchParams(window.location.search);
+            const cityParam = params.get('city');
+            const pincodeParam = params.get('pincode');
+            const bgParam = params.get('bloodGroup');
+
+            let shouldSearch = false;
+
+            if (bgParam) {
+                document.getElementById('bloodGroup').value = bgParam;
+            }
+
+            // Fetch state data
+            const stateSelect = document.getElementById("stateSelect");
+            const citySelect = document.getElementById("city");
+            let locationData = null;
+
+            try {
+                const response = await fetch("https://raw.githubusercontent.com/sab99r/Indian-States-And-Districts/master/states-and-districts.json");
+                locationData = await response.json();
+                
+                if (locationData && locationData.states) {
+                    locationData.states.forEach(stateObj => {
+                        const option = document.createElement("option");
+                        option.value = stateObj.state;
+                        option.textContent = stateObj.state;
+                        stateSelect.appendChild(option);
+                    });
+                }
+            } catch(e) {
+                console.error("Could not load geographic data");
+            }
+
+            stateSelect.addEventListener("change", function() {
+                citySelect.innerHTML = '<option value="" selected disabled>Select District</option>';
+                const selectedState = this.value;
+                if(!locationData || !locationData.states) return;
+                
+                const stateObj = locationData.states.find(s => s.state === selectedState);
+                if(stateObj && stateObj.districts) {
+                    stateObj.districts.forEach(district => {
+                        const option = document.createElement("option");
+                        option.value = district;
+                        option.textContent = district;
+                        citySelect.appendChild(option);
+                    });
+                }
+            });
+
+            if (cityParam) {
+                // Since state is unlinked directly without full reverse geocoding, we inject city purely for visual consistency
+                citySelect.innerHTML = `<option value="\${cityParam}" selected>\${cityParam}</option>`;
+                shouldSearch = true;
+            }
+            if (pincodeParam) {
+                document.getElementById('pincode').value = pincodeParam;
+                shouldSearch = true;
+            }
+
+            if (shouldSearch) {
+                searchByAddress(cityParam || '', pincodeParam || '');
+            }
+        });
     </script>
 </body>
 </html>

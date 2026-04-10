@@ -61,6 +61,10 @@ public class VerifyRegistrationServlet extends HttpServlet {
                 // Delete used OTP
                 db.collection("password_resets").document(tokens.get(0).getId()).delete().get();
                 
+                // Send registration confirmation email asynchronously
+                String fullName = users.get(0).getString("full_name");
+                com.bloodbank.util.EmailService.sendRegistrationCompleteEmail(email, fullName != null ? fullName : "User");
+                
                 // Redirect back to login with success message
                 response.sendRedirect(request.getContextPath() + "/login.jsp?registered=1");
             } else {

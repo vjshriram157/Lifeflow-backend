@@ -39,6 +39,15 @@
         <url-pattern>/AdminApprovalServlet</url-pattern>
     </servlet-mapping>
 
+    <servlet>
+        <servlet-name>AdminUserManagementServlet</servlet-name>
+        <servlet-class>com.bloodbank.servlets.AdminUserManagementServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>AdminUserManagementServlet</servlet-name>
+        <url-pattern>/AdminUserManagementServlet</url-pattern>
+    </servlet-mapping>
+
     <!-- ================= CERTIFICATE ================= -->
     <servlet>
         <servlet-name>DonationCertificateServlet</servlet-name>
@@ -120,6 +129,15 @@
     <servlet-mapping>
         <servlet-name>ExportReportServlet</servlet-name>
         <url-pattern>/ExportReport</url-pattern>
+    </servlet-mapping>
+
+    <servlet>
+        <servlet-name>UpdateStockServlet</servlet-name>
+        <servlet-class>com.bloodbank.servlets.UpdateStockServlet</servlet-class>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>UpdateStockServlet</servlet-name>
+        <url-pattern>/UpdateStockServlet</url-pattern>
     </servlet-mapping>
 
 </web-app>

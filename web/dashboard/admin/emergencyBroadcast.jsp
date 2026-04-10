@@ -30,6 +30,7 @@
             <li><a href="<%=request.getContextPath()%>/adminPendingApprovals.jsp" class="nav-link"><i class="fa-solid fa-user-check"></i> Approvals</a></li>
             <li><a href="emergencyBroadcast.jsp" class="nav-link active"><i class="fa-solid fa-tower-broadcast"></i> Emergencies</a></li>
             <li><a href="analytics.jsp" class="nav-link"><i class="fa-solid fa-chart-line"></i> Analytics</a></li>
+            <li><a href="adminDirectory.jsp" class="nav-link"><i class="fa-solid fa-address-book"></i> User Directory</a></li>
         </ul>
         <div class="mt-auto pt-5 pb-3">
             <a href="<%=request.getContextPath()%>/LogoutServlet" class="btn btn-outline-light btn-sm w-100 rounded-pill"><i class="fa-solid fa-right-from-bracket me-2"></i>Sign Out</a>
@@ -92,6 +93,7 @@
                             <tr>
                                 <td>
                                     <div class="fw-bold text-dark"><%= bankName != null ? bankName : "Unknown Bank" %></div>
+                                    <div class="text-muted small"><i class="fa-solid fa-boxes-stacked me-1"></i> Auto System Trigger</div>
                                 </td>
                                 <td class="text-muted"><i class="fa-solid fa-location-dot me-1 text-danger"></i> <%= city != null ? city : "N/A" %></td>
                                 <td>
@@ -106,6 +108,47 @@
                                     <button class="btn btn-premium btn-sm rounded-pill px-4 fw-bold shadow-sm"
                                             onclick="sendBroadcast('<%= bankId %>', '<%= bankName != null ? bankName.replace("'", "\\'") : "" %>', '<%= bloodGroup != null ? bloodGroup : "" %>')">
                                         <i class="fa-solid fa-podcast me-1"></i> Dispatch Request
+                                    </button>
+                                </td>
+                            </tr>
+<%
+        }
+
+        // Fetch all manual emergencies
+        ApiFuture<QuerySnapshot> manualAlertsFuture = db.collection("emergency_alerts").whereEqualTo("status", "ACTIVE_MANUAL").get();
+        List<QueryDocumentSnapshot> manualAlertDocs = manualAlertsFuture.get().getDocuments();
+
+        for (QueryDocumentSnapshot aDoc : manualAlertDocs) {
+            String bankId = aDoc.getString("bank_id");
+            if (bankId == null) continue;
+
+            DocumentSnapshot bankDoc = db.collection("blood_banks").document(bankId).get().get();
+            if (!bankDoc.exists() || !"APPROVED".equalsIgnoreCase(bankDoc.getString("status"))) {
+                continue;
+            }
+
+            any = true;
+            String bankName = bankDoc.getString("bank_name");
+            String city = bankDoc.getString("city");
+            String bloodGroup = aDoc.getString("blood_group");
+            String msg = aDoc.getString("message");
+%>
+                            <tr class="table-danger">
+                                <td>
+                                    <div class="fw-bold text-dark"><%= bankName != null ? bankName : "Unknown Bank" %></div>
+                                    <div class="text-danger small fw-bold"><i class="fa-solid fa-triangle-exclamation me-1"></i> Manual Override</div>
+                                </td>
+                                <td class="text-muted"><i class="fa-solid fa-location-dot me-1 text-danger"></i> <%= city != null ? city : "N/A" %></td>
+                                <td>
+                                    <span class="badge bg-danger rounded-pill px-3 fs-6 shadow-sm"><i class="fa-solid fa-droplet me-1"></i> <%= bloodGroup %></span>
+                                </td>
+                                <td>
+                                    <span class="small text-dark"><em>"<%= msg != null ? msg : "Urgent request." %>"</em></span>
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-outline-danger btn-sm rounded-pill px-4 fw-bold"
+                                            onclick="sendBroadcast('<%= bankId %>', '<%= bankName != null ? bankName.replace("'", "\\'") : "" %>', '<%= bloodGroup != null ? bloodGroup : "" %>')">
+                                        <i class="fa-solid fa-podcast me-1"></i> Push Again
                                     </button>
                                 </td>
                             </tr>

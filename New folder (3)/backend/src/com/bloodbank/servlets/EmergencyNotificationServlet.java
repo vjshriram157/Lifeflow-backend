@@ -132,6 +132,16 @@ public class EmergencyNotificationServlet extends HttpServlet {
                         }
 
                         if (!hasRecent) {
+                            // Send Emergency Email Notification
+                            String email = userDoc.getString("email");
+                            String fullName = userDoc.getString("full_name");
+                            if (email != null && !email.isEmpty()) {
+                                String emailMessage = message != null && !message.isEmpty() 
+                                    ? message 
+                                    : "A nearby blood bank has requested " + bloodGroup + " donors.";
+                                com.bloodbank.util.EmailService.sendEmergencyRequestEmail(email, fullName != null ? fullName : "Donor", bloodGroup, emailMessage);
+                            }
+
                             String token = tokenDoc.getString("device_token");
                             if (token != null && !token.isEmpty()) {
                                 JSONObject dev = new JSONObject();

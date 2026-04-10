@@ -1,5 +1,5 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
-<%@ page import="com.bloodbank.util.FirebaseConfig,com.google.cloud.firestore.*,com.google.api.core.ApiFuture,java.util.List" %>
+<%@ page import="com.bloodbank.util.FirebaseConfig,com.google.cloud.firestore.*,com.google.api.core.ApiFuture,java.util.List,java.util.Map,java.util.HashMap" %>
 <%
     String userId = (String) session.getAttribute("userId");
     String role = (String) session.getAttribute("role");
@@ -60,11 +60,12 @@
                         </thead>
                         <tbody>
 <%
+Firestore db = null;
+String alertBankId = null;
 boolean hasAlerts = false;
 try {
-    Firestore db = FirebaseConfig.getFirestore();
+    db = FirebaseConfig.getFirestore();
     DocumentSnapshot userDoc = db.collection("users").document(userId).get().get();
-    String alertBankId = null;
 
     if (userDoc.exists() && userDoc.getString("email") != null) {
         String userEmail = userDoc.getString("email");
@@ -128,6 +129,61 @@ try {
             </div>
         </div>
 
+        <div class="row g-4 mb-4">
+            <!-- LIVE INVENTORY MONITOR -->
+            <div class="col-lg-8">
+                <div class="card card-modern border-0 h-100 fade-in-up delay-200">
+                    <div class="card-body p-4 p-md-5">
+                        <div class="d-flex justify-content-between align-items-center mb-4">
+                            <h4 class="fw-bold mb-0"><i class="fa-solid fa-boxes-stacked text-danger me-2"></i> Live Inventory Management</h4>
+                            <span class="badge bg-light text-muted rounded-pill px-3 py-2 border">Auto-sync with Admin</span>
+                        </div>
+                        
+                        <div class="row g-3">
+                            <% 
+                                String[] groups = {"A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"};
+                                Map<String, Long> stocks = new HashMap<>();
+                                if (alertBankId != null) {
+                                    ApiFuture<QuerySnapshot> stockFuture = db.collection("blood_stock").whereEqualTo("blood_bank_id", alertBankId).get();
+                                    for (QueryDocumentSnapshot sDoc : stockFuture.get().getDocuments()) {
+                                        stocks.put(sDoc.getString("blood_group"), sDoc.getLong("units"));
+                                    }
+                                }
+                                for (String g : groups) {
+                                    long units = stocks.getOrDefault(g, 0L);
+                                    String statusClass = units < 5 ? "text-danger fw-bold" : "text-success";
+                            %>
+                            <div class="col-md-3 col-6">
+                                <div class="p-3 border rounded-4 text-center bg-light-subtle h-100">
+                                    <div class="small text-muted text-uppercase fw-bold mb-1"><%= g %></div>
+                                    <div class="fs-4 <%= statusClass %> mb-2"><%= units %> <small class="fs-6">Units</small></div>
+                                    <button class="btn btn-sm btn-outline-danger rounded-pill w-100" data-bs-toggle="modal" data-bs-target="#updateStock<%= g.replace("+","Plus").replace("-","Minus") %>">
+                                        Update
+                                    </button>
+                                </div>
+                            </div>
+                            <% } %>
+                        </div>
+                        <p class="text-muted small mt-4 mb-0"><i class="fa-solid fa-circle-info me-1"></i> Tip: Setting any stock below 5 units will automatically alert the Admin for emergency dispatch.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EMERGENCY PANIC BUTTON -->
+            <div class="col-lg-4">
+                <div class="card card-modern border-0 h-100 bg-danger text-white fade-in-up delay-300">
+                    <div class="card-body p-4 p-md-5 d-flex flex-column justify-content-center text-center">
+                        <i class="fa-solid fa-triangle-exclamation fs-1 mb-4"></i>
+                        <h4 class="fw-bold mb-2">Emergency Override</h4>
+                        <p class="opacity-75 mb-4 small">Manually request a priority broadcast to regional donors regardless of stock levels.</p>
+                        <button class="btn btn-light rounded-pill px-4 py-2 fw-bold text-danger" data-bs-toggle="modal" data-bs-target="#manualEmergencyModal">
+                            <i class="fa-solid fa-tower-broadcast me-2"></i>RAISE EMERGENCY
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="card card-modern border-0 fade-in-up delay-200 mb-4">
             <div class="card-body p-4 p-md-5">
                 <h4 class="fw-bold mb-4"><i class="fa-solid fa-clipboard-list text-danger me-2"></i> Daily Appointments Queue</h4>
@@ -149,8 +205,6 @@ try {
 boolean any = false;
 
 try {
-    Firestore db = FirebaseConfig.getFirestore();
-    
     // First, get the user's email
     DocumentSnapshot userDoc = db.collection("users").document(userId).get().get();
     String bankId = null;
@@ -260,6 +314,62 @@ try {
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODALS AREA -->
+<%
+    for (String g : groups) {
+        long units = stocks.getOrDefault(g, 0L);
+%>
+<div class="modal fade" id="updateStock<%= g.replace("+","Plus").replace("-","Minus") %>" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content border-0 shadow" style="border-radius: 1rem;">
+            <form action="<%= request.getContextPath() %>/UpdateStockServlet" method="post">
+                <div class="modal-body p-4">
+                    <h6 class="fw-bold mb-3">Update <%= g %> Stock</h6>
+                    <input type="hidden" name="action" value="update_inventory">
+                    <input type="hidden" name="bloodGroup" value="<%= g %>">
+                    <label class="small text-muted mb-1">New Unit Count</label>
+                    <input type="number" name="units" class="form-control rounded-pill mb-3" value="<%= units %>" required min="0">
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-danger rounded-pill">Save Changes</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<% } %>
+
+<div class="modal fade" id="manualEmergencyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 1.5rem;">
+            <form action="<%= request.getContextPath() %>/UpdateStockServlet" method="post">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold">Manual Emergency Request</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <input type="hidden" name="action" value="manual_emergency">
+                    <div class="mb-3">
+                        <label class="small text-muted text-uppercase fw-bold mb-1">Target Blood Group</label>
+                        <select name="bloodGroup" class="form-select rounded-pill">
+                            <% for(String g : groups) { %> <option value="<%= g %>"><%= g %></option> <% } %>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="small text-muted text-uppercase fw-bold mb-1">Emergency Message</label>
+                        <textarea name="message" class="form-control rounded-4" rows="3" placeholder="Describe the crisis... e.g., Urgent bypass surgery, rare type disaster relief."></textarea>
+                    </div>
+                    <p class="text-danger small"><i class="fa-solid fa-eye me-1"></i> This request will be flagged as HIGH PRIORITY in the Admin Emergency Center.</p>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger rounded-pill px-4">Transmit Request</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
